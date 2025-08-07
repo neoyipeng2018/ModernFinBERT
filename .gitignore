@@ -1,0 +1,34 @@
+# Data files
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model checkpoints
+models/checkpoints/*
+!models/checkpoints/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Environment
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Jupyter
+.ipynb_checkpoints/
+
+# System
+.DS_Store
+Thumbs.db
+
+# API Keys
+*.key
+openai_key.txt
+
+# Temporary files
+*.tmp
+*.temp
