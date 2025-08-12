@@ -10,6 +10,7 @@ transformers>=4.20.0
 wandb
 tqdm
 jupyter
+ipykernel
 openai
 python-dotenv
 bitsandbytes
