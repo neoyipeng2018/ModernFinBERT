@@ -8,12 +8,28 @@ This is a research project for developing ModernFinBERT, a modernized financial 
 
 ## Project Status
 
-**Current State**: Early planning phase - repository contains only project timeline and planning documentation.
+**Current State**: Active experimentation — three focused experiments comparing ModernBERT vs FinBERT baselines, measuring data augmentation impact, and benchmarking against Claude Opus 4.5.
+
+**Key Results So Far**:
+- ModernFinBERT-base uploaded to HuggingFace (`neoyipeng/ModernFinBERT-base`): 90.47% on FPB (trained on aggregated minus FPB)
+- Cross-validation on FPB: 97.63% mean accuracy
+- Working Colab setup with Unsloth + ModernBERT-base (149M params)
 
 **Key Objective**: Build and deploy a financial sentiment analysis model that outperforms existing FinBERT variants, with focus on:
 - Superior accuracy (>94% vs FinBERT's 93%)
-- Fast inference (<50ms per sample)  
+- Fast inference (<50ms per sample)
 - Community adoption and practical usage
+
+## Current Experiments
+
+### Notebook 1: Architecture Comparison (`notebooks/01_architecture_comparison.ipynb`)
+Fine-tune ModernBERT-base on aggregated dataset (excluding FPB source 6), evaluate on FPB `sentences_allAgree` and `sentences_50agree`. Compare against ProsusAI/finbert and yiyanghkust/finbert-tone baselines. Reports accuracy, macro-F1, per-class metrics, confusion matrices.
+
+### Notebook 2: DataBoost (`notebooks/02_databoost.ipynb`)
+Train baseline, mine misclassified validation samples, paraphrase errors with Claude API (preserving correct labels), add to training set, retrain. Measures accuracy improvement from targeted augmentation.
+
+### Notebook 3: Claude Comparison (`notebooks/03_claude_comparison.ipynb`)
+Zero-shot classification of FPB test set using Claude Opus 4.5 via API. Compares accuracy/F1 against fine-tuned ModernFinBERT with cost analysis (API cost vs GPU hosting).
 
 ## Development Timeline
 
