@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-01-architecture-comparison",
+  "title": "ModernFinBERT 01 Architecture Comparison",
+  "code_file": "01_architecture_comparison.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}
