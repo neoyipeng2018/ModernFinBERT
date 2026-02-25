@@ -1,0 +1,311 @@
+[{"stream_name":"stderr","time":6.930574692,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":6.930655255,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":6.930660432,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":6.930663444,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":7.571338574,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.571373099,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.571378789,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.571383619,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":40.286311564,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stderr","time":40.286346386,"data":"\n"}
+,{"stream_name":"stderr","time":40.286353756,"data":"Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.\n"}
+,{"stream_name":"stdout","time":46.331575959,"data":"Train: 13,004  |  Val: 722  |  Test: 723\n"}
+,{"stream_name":"stdout","time":46.331629839,"data":"Sample: {'text': 'Colliers to announce third quarter results on November 1, 2022 --  Colliers International Group Inc. (TSX: CIGI; NASDAQ: CIGI) (“Colliers” or the “Company”) today announced that results for the third quarter ended September 30, 2022 will be issued by press release on November 1, 2022 at approximately 7:00am ET.', 'labels': [0.0, 1.0, 0.0]}\n"}
+,{"stream_name":"stderr","time":46.518920357,"data":"`torch_dtype` is deprecated! Use `dtype` instead!\n"}
+,{"stream_name":"stderr","time":46.518967628,"data":"\n"}
+,{"stream_name":"stderr","time":46.518974364,"data":"`torch_dtype` is deprecated! Use `dtype` instead!\n"}
+,{"stream_name":"stderr","time":49.006799821,"data":"\u001b[1mModernBertForSequenceClassification LOAD REPORT\u001b[0m from: answerdotai/ModernBERT-base\n"}
+,{"stream_name":"stderr","time":49.006840655,"data":"Key               | Status     | \n"}
+,{"stream_name":"stderr","time":49.006858294,"data":"------------------+------------+-\n"}
+,{"stream_name":"stderr","time":49.006862079,"data":"decoder.bias      | UNEXPECTED | \n"}
+,{"stream_name":"stderr","time":49.006865577,"data":"classifier.bias   | MISSING    | \n"}
+,{"stream_name":"stderr","time":49.006869463,"data":"classifier.weight | MISSING    | \n"}
+,{"stream_name":"stderr","time":49.006873042,"data":"\n"}
+,{"stream_name":"stderr","time":49.006876441,"data":"\u001b[3mNotes:\n"}
+,{"stream_name":"stderr","time":49.006879933,"data":"- UNEXPECTED\u001b[3m\t:can be ignored when loading from different task/architecture; not ok if you expect identical arch.\n"}
+,{"stream_name":"stderr","time":49.00688381,"data":"- MISSING\u001b[3m\t:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.\u001b[0m\n"}
+,{"stream_name":"stderr","time":49.006887679,"data":"\n"}
+,{"stream_name":"stderr","time":49.006890989,"data":"\u001b[1mModernBertForSequenceClassification LOAD REPORT\u001b[0m from: answerdotai/ModernBERT-base\n"}
+,{"stream_name":"stderr","time":49.006894582,"data":"Key               | Status     | \n"}
+,{"stream_name":"stderr","time":49.006915234,"data":"------------------+------------+-\n"}
+,{"stream_name":"stderr","time":49.006918129,"data":"decoder.bias      | UNEXPECTED | \n"}
+,{"stream_name":"stderr","time":49.006920617,"data":"classifier.bias   | MISSING    | \n"}
+,{"stream_name":"stderr","time":49.006923582,"data":"classifier.weight | MISSING    | \n"}
+,{"stream_name":"stderr","time":49.006944379,"data":"\n"}
+,{"stream_name":"stderr","time":49.006952107,"data":"\u001b[3mNotes:\n"}
+,{"stream_name":"stderr","time":49.006956446,"data":"- UNEXPECTED\u001b[3m\t:can be ignored when loading from different task/architecture; not ok if you expect identical arch.\n"}
+,{"stream_name":"stderr","time":49.006960914,"data":"- MISSING\u001b[3m\t:those params were newly initialized because missing from the checkpoint. Consider training on your downstream task.\u001b[0m\n"}
+,{"stream_name":"stdout","time":51.443429258,"data":"trainable params: 3,381,507 || all params: 152,988,678 || trainable%: 2.2103\n"}
+,{"stream_name":"stderr","time":53.893789137,"data":"The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': None, 'bos_token_id': None}.\n"}
+,{"stream_name":"stderr","time":53.893837685,"data":"\n"}
+,{"stream_name":"stderr","time":53.893843621,"data":"The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': None, 'bos_token_id': None}.\n"}
+,{"stream_name":"stdout","time":7765.043635748,"data":"FPB 50agree: 4,846 samples\n"}
+,{"stream_name":"stdout","time":7765.043701809,"data":"FPB allAgree: 2,264 samples\n"}
+,{"stream_name":"stdout","time":7765.117379091,"data":"============================================================\n"}
+,{"stream_name":"stdout","time":7765.117406505,"data":"ModernFinBERT — FPB sentences_50agree\n"}
+,{"stream_name":"stdout","time":7765.117418871,"data":"============================================================\n"}
+,{"stream_name":"stderr","time":7765.1184623,"data":"\rEvaluating:   0%|          | 0/152 [00:00\u003c?, ?it/s]\n"}
+,{"stream_name":"stderr","time":7765.262160155,"data":"\rEvaluating:   0%|          | 0/152 [00:00\u003c?, ?it/s]\rEvaluating:   1%|          | 1/152 [00:00\u003c00:21,  7.09it/s]\n"}
+,{"stream_name":"stderr","time":7765.408704966,"data":"\rEvaluating:   1%|          | 1/152 [00:00\u003c00:21,  7.09it/s]\rEvaluating:   1%|▏         | 2/152 [00:00\u003c00:21,  6.89it/s]\n"}
+,{"stream_name":"stderr","time":7765.535505869,"data":"\rEvaluating:   1%|▏         | 2/152 [00:00\u003c00:21,  6.89it/s]\rEvaluating:   2%|▏         | 3/152 [00:00\u003c00:20,  7.31it/s]\n"}
+,{"stream_name":"stderr","time":7765.63928419,"data":"\rEvaluating:   2%|▏         | 3/152 [00:00\u003c00:20,  7.31it/s]\rEvaluating:   3%|▎         | 4/152 [00:00\u003c00:18,  8.11it/s]\n"}
+,{"stream_name":"stderr","time":7765.742714522,"data":"\rEvaluating:   3%|▎         | 4/152 [00:00\u003c00:18,  8.11it/s]\rEvaluating:   3%|▎         | 5/152 [00:00\u003c00:17,  8.61it/s]\n"}
+,{"stream_name":"stderr","time":7765.868463721,"data":"\rEvaluating:   3%|▎         | 5/152 [00:00\u003c00:17,  8.61it/s]\rEvaluating:   4%|▍         | 6/152 [00:00\u003c00:17,  8.35it/s]\n"}
+,{"stream_name":"stderr","time":7765.999232919,"data":"\rEvaluating:   4%|▍         | 6/152 [00:00\u003c00:17,  8.35it/s]\rEvaluating:   5%|▍         | 7/152 [00:00\u003c00:17,  8.11it/s]\n"}
+,{"stream_name":"stderr","time":7766.127309841,"data":"\rEvaluating:   5%|▍         | 7/152 [00:00\u003c00:17,  8.11it/s]\rEvaluating:   5%|▌         | 8/152 [00:01\u003c00:17,  8.01it/s]\n"}
+,{"stream_name":"stderr","time":7766.229704119,"data":"\rEvaluating:   5%|▌         | 8/152 [00:01\u003c00:17,  8.01it/s]\rEvaluating:   6%|▌         | 9/152 [00:01\u003c00:16,  8.51it/s]\n"}
+,{"stream_name":"stderr","time":7766.352303703,"data":"\rEvaluating:   6%|▌         | 9/152 [00:01\u003c00:16,  8.51it/s]\rEvaluating:   7%|▋         | 10/152 [00:01\u003c00:16,  8.37it/s]\n"}
+,{"stream_name":"stderr","time":7766.47873862,"data":"\rEvaluating:   7%|▋         | 10/152 [00:01\u003c00:16,  8.37it/s]\rEvaluating:   7%|▋         | 11/152 [00:01\u003c00:17,  8.23it/s]\n"}
+,{"stream_name":"stderr","time":7766.595448018,"data":"\rEvaluating:   7%|▋         | 11/152 [00:01\u003c00:17,  8.23it/s]\rEvaluating:   8%|▊         | 12/152 [00:01\u003c00:16,  8.35it/s]\n"}
+,{"stream_name":"stderr","time":7766.732907205,"data":"\rEvaluating:   8%|▊         | 12/152 [00:01\u003c00:16,  8.35it/s]\rEvaluating:   9%|▊         | 13/152 [00:01\u003c00:17,  7.97it/s]\n"}
+,{"stream_name":"stderr","time":7766.874099523,"data":"\rEvaluating:   9%|▊         | 13/152 [00:01\u003c00:17,  7.97it/s]\rEvaluating:   9%|▉         | 14/152 [00:01\u003c00:17,  7.71it/s]\n"}
+,{"stream_name":"stderr","time":7766.985058523,"data":"\rEvaluating:   9%|▉         | 14/152 [00:01\u003c00:17,  7.71it/s]\rEvaluating:  10%|▉         | 15/152 [00:01\u003c00:17,  8.02it/s]\n"}
+,{"stream_name":"stderr","time":7767.087842369,"data":"\rEvaluating:  10%|▉         | 15/152 [00:01\u003c00:17,  8.02it/s]\rEvaluating:  11%|█         | 16/152 [00:01\u003c00:16,  8.47it/s]\n"}
+,{"stream_name":"stderr","time":7767.220387821,"data":"\rEvaluating:  11%|█         | 16/152 [00:01\u003c00:16,  8.47it/s]\rEvaluating:  11%|█         | 17/152 [00:02\u003c00:16,  8.17it/s]\n"}
+,{"stream_name":"stderr","time":7767.349570572,"data":"\rEvaluating:  11%|█         | 17/152 [00:02\u003c00:16,  8.17it/s]\rEvaluating:  12%|█▏        | 18/152 [00:02\u003c00:16,  8.04it/s]\n"}
+,{"stream_name":"stderr","time":7767.463412942,"data":"\rEvaluating:  12%|█▏        | 18/152 [00:02\u003c00:16,  8.04it/s]\rEvaluating:  12%|█▎        | 19/152 [00:02\u003c00:16,  8.28it/s]\n"}
+,{"stream_name":"stderr","time":7767.572204971,"data":"\rEvaluating:  12%|█▎        | 19/152 [00:02\u003c00:16,  8.28it/s]\rEvaluating:  13%|█▎        | 20/152 [00:02\u003c00:15,  8.51it/s]\n"}
+,{"stream_name":"stderr","time":7767.711753555,"data":"\rEvaluating:  13%|█▎        | 20/152 [00:02\u003c00:15,  8.51it/s]\rEvaluating:  14%|█▍        | 21/152 [00:02\u003c00:16,  8.08it/s]\n"}
+,{"stream_name":"stderr","time":7767.838878333,"data":"\rEvaluating:  14%|█▍        | 21/152 [00:02\u003c00:16,  8.08it/s]\rEvaluating:  14%|█▍        | 22/152 [00:02\u003c00:16,  7.98it/s]\n"}
+,{"stream_name":"stderr","time":7767.957087088,"data":"\rEvaluating:  14%|█▍        | 22/152 [00:02\u003c00:16,  7.98it/s]\rEvaluating:  15%|█▌        | 23/152 [00:02\u003c00:15,  8.15it/s]\n"}
+,{"stream_name":"stderr","time":7768.064594845,"data":"\rEvaluating:  15%|█▌        | 23/152 [00:02\u003c00:15,  8.15it/s]\rEvaluating:  16%|█▌        | 24/152 [00:02\u003c00:15,  8.47it/s]\n"}
+,{"stream_name":"stderr","time":7768.1720354,"data":"\rEvaluating:  16%|█▌        | 24/152 [00:02\u003c00:15,  8.47it/s]\rEvaluating:  16%|█▋        | 25/152 [00:03\u003c00:14,  8.67it/s]\n"}
+,{"stream_name":"stderr","time":7768.282258148,"data":"\rEvaluating:  16%|█▋        | 25/152 [00:03\u003c00:14,  8.67it/s]\rEvaluating:  17%|█▋        | 26/152 [00:03\u003c00:14,  8.82it/s]\n"}
+,{"stream_name":"stderr","time":7768.410801058,"data":"\rEvaluating:  17%|█▋        | 26/152 [00:03\u003c00:14,  8.82it/s]\rEvaluating:  18%|█▊        | 27/152 [00:03\u003c00:14,  8.48it/s]\n"}
+,{"stream_name":"stderr","time":7768.533590046,"data":"\rEvaluating:  18%|█▊        | 27/152 [00:03\u003c00:14,  8.48it/s]\rEvaluating:  18%|█▊        | 28/152 [00:03\u003c00:14,  8.35it/s]\n"}
+,{"stream_name":"stderr","time":7768.639160037,"data":"\rEvaluating:  18%|█▊        | 28/152 [00:03\u003c00:14,  8.35it/s]\rEvaluating:  19%|█▉        | 29/152 [00:03\u003c00:14,  8.66it/s]\n"}
+,{"stream_name":"stderr","time":7768.767563456,"data":"\rEvaluating:  19%|█▉        | 29/152 [00:03\u003c00:14,  8.66it/s]\rEvaluating:  20%|█▉        | 30/152 [00:03\u003c00:14,  8.37it/s]\n"}
+,{"stream_name":"stderr","time":7768.992131834,"data":"\rEvaluating:  20%|█▉        | 30/152 [00:03\u003c00:14,  8.37it/s]\rEvaluating:  21%|██        | 32/152 [00:03\u003c00:13,  8.64it/s]\n"}
+,{"stream_name":"stderr","time":7769.107158681,"data":"\rEvaluating:  21%|██        | 32/152 [00:03\u003c00:13,  8.64it/s]\rEvaluating:  22%|██▏       | 33/152 [00:03\u003c00:13,  8.65it/s]\n"}
+,{"stream_name":"stderr","time":7769.239723883,"data":"\rEvaluating:  22%|██▏       | 33/152 [00:03\u003c00:13,  8.65it/s]\rEvaluating:  22%|██▏       | 34/152 [00:04\u003c00:14,  8.31it/s]\n"}
+,{"stream_name":"stderr","time":7769.347762314,"data":"\rEvaluating:  22%|██▏       | 34/152 [00:04\u003c00:14,  8.31it/s]\rEvaluating:  23%|██▎       | 35/152 [00:04\u003c00:13,  8.54it/s]\n"}
+,{"stream_name":"stderr","time":7769.451402834,"data":"\rEvaluating:  23%|██▎       | 35/152 [00:04\u003c00:13,  8.54it/s]\rEvaluating:  24%|██▎       | 36/152 [00:04\u003c00:13,  8.85it/s]\n"}
+,{"stream_name":"stderr","time":7769.567306158,"data":"\rEvaluating:  24%|██▎       | 36/152 [00:04\u003c00:13,  8.85it/s]\rEvaluating:  24%|██▍       | 37/152 [00:04\u003c00:13,  8.79it/s]\n"}
+,{"stream_name":"stderr","time":7769.674600816,"data":"\rEvaluating:  24%|██▍       | 37/152 [00:04\u003c00:13,  8.79it/s]\rEvaluating:  25%|██▌       | 38/152 [00:04\u003c00:12,  8.90it/s]\n"}
+,{"stream_name":"stderr","time":7769.811300446,"data":"\rEvaluating:  25%|██▌       | 38/152 [00:04\u003c00:12,  8.90it/s]\rEvaluating:  26%|██▌       | 39/152 [00:04\u003c00:13,  8.38it/s]\n"}
+,{"stream_name":"stderr","time":7769.941522726,"data":"\rEvaluating:  26%|██▌       | 39/152 [00:04\u003c00:13,  8.38it/s]\rEvaluating:  26%|██▋       | 40/152 [00:04\u003c00:13,  8.15it/s]\n"}
+,{"stream_name":"stderr","time":7770.072806693,"data":"\rEvaluating:  26%|██▋       | 40/152 [00:04\u003c00:13,  8.15it/s]\rEvaluating:  27%|██▋       | 41/152 [00:04\u003c00:13,  8.02it/s]\n"}
+,{"stream_name":"stderr","time":7770.174013695,"data":"\rEvaluating:  27%|██▋       | 41/152 [00:04\u003c00:13,  8.02it/s]\rEvaluating:  28%|██▊       | 42/152 [00:05\u003c00:12,  8.49it/s]\n"}
+,{"stream_name":"stderr","time":7770.284917776,"data":"\rEvaluating:  28%|██▊       | 42/152 [00:05\u003c00:12,  8.49it/s]\rEvaluating:  28%|██▊       | 43/152 [00:05\u003c00:12,  8.62it/s]\n"}
+,{"stream_name":"stderr","time":7770.512519266,"data":"\rEvaluating:  28%|██▊       | 43/152 [00:05\u003c00:12,  8.62it/s]\rEvaluating:  30%|██▉       | 45/152 [00:05\u003c00:12,  8.69it/s]\n"}
+,{"stream_name":"stderr","time":7770.620197486,"data":"\rEvaluating:  30%|██▉       | 45/152 [00:05\u003c00:12,  8.69it/s]\rEvaluating:  30%|███       | 46/152 [00:05\u003c00:11,  8.83it/s]\n"}
+,{"stream_name":"stderr","time":7770.842245984,"data":"\rEvaluating:  30%|███       | 46/152 [00:05\u003c00:11,  8.83it/s]\rEvaluating:  32%|███▏      | 48/152 [00:05\u003c00:11,  8.90it/s]\n"}
+,{"stream_name":"stderr","time":7771.031781457,"data":"\rEvaluating:  32%|███▏      | 48/152 [00:05\u003c00:11,  8.90it/s]\rEvaluating:  33%|███▎      | 50/152 [00:05\u003c00:10,  9.46it/s]\n"}
+,{"stream_name":"stderr","time":7771.156277742,"data":"\rEvaluating:  33%|███▎      | 50/152 [00:05\u003c00:10,  9.46it/s]\rEvaluating:  34%|███▎      | 51/152 [00:06\u003c00:11,  9.12it/s]\n"}
+,{"stream_name":"stderr","time":7771.287493218,"data":"\rEvaluating:  34%|███▎      | 51/152 [00:06\u003c00:11,  9.12it/s]\rEvaluating:  34%|███▍      | 52/152 [00:06\u003c00:11,  8.71it/s]\n"}
+,{"stream_name":"stderr","time":7771.487197302,"data":"\rEvaluating:  34%|███▍      | 52/152 [00:06\u003c00:11,  8.71it/s]\rEvaluating:  36%|███▌      | 54/152 [00:06\u003c00:10,  9.22it/s]\n"}
+,{"stream_name":"stderr","time":7771.598658079,"data":"\rEvaluating:  36%|███▌      | 54/152 [00:06\u003c00:10,  9.22it/s]\rEvaluating:  36%|███▌      | 55/152 [00:06\u003c00:10,  9.16it/s]\n"}
+,{"stream_name":"stderr","time":7771.82400085,"data":"\rEvaluating:  36%|███▌      | 55/152 [00:06\u003c00:10,  9.16it/s]\rEvaluating:  38%|███▊      | 57/152 [00:06\u003c00:10,  9.04it/s]\n"}
+,{"stream_name":"stderr","time":7771.938852999,"data":"\rEvaluating:  38%|███▊      | 57/152 [00:06\u003c00:10,  9.04it/s]\rEvaluating:  38%|███▊      | 58/152 [00:06\u003c00:10,  8.97it/s]\n"}
+,{"stream_name":"stderr","time":7772.161894826,"data":"\rEvaluating:  38%|███▊      | 58/152 [00:06\u003c00:10,  8.97it/s]\rEvaluating:  39%|███▉      | 59/152 [00:07\u003c00:12,  7.25it/s]\n"}
+,{"stream_name":"stderr","time":7772.275996723,"data":"\rEvaluating:  39%|███▉      | 59/152 [00:07\u003c00:12,  7.25it/s]\rEvaluating:  39%|███▉      | 60/152 [00:07\u003c00:12,  7.57it/s]\n"}
+,{"stream_name":"stderr","time":7772.403474035,"data":"\rEvaluating:  39%|███▉      | 60/152 [00:07\u003c00:12,  7.57it/s]\rEvaluating:  40%|████      | 61/152 [00:07\u003c00:11,  7.66it/s]\n"}
+,{"stream_name":"stderr","time":7772.506121523,"data":"\rEvaluating:  40%|████      | 61/152 [00:07\u003c00:11,  7.66it/s]\rEvaluating:  41%|████      | 62/152 [00:07\u003c00:11,  8.11it/s]\n"}
+,{"stream_name":"stderr","time":7772.636917629,"data":"\rEvaluating:  41%|████      | 62/152 [00:07\u003c00:11,  8.11it/s]\rEvaluating:  41%|████▏     | 63/152 [00:07\u003c00:11,  8.00it/s]\n"}
+,{"stream_name":"stderr","time":7772.761108776,"data":"\rEvaluating:  41%|████▏     | 63/152 [00:07\u003c00:11,  8.00it/s]\rEvaluating:  42%|████▏     | 64/152 [00:07\u003c00:11,  7.99it/s]\n"}
+,{"stream_name":"stderr","time":7772.862588154,"data":"\rEvaluating:  42%|████▏     | 64/152 [00:07\u003c00:11,  7.99it/s]\rEvaluating:  43%|████▎     | 65/152 [00:07\u003c00:10,  8.45it/s]\n"}
+,{"stream_name":"stderr","time":7772.992305323,"data":"\rEvaluating:  43%|████▎     | 65/152 [00:07\u003c00:10,  8.45it/s]\rEvaluating:  43%|████▎     | 66/152 [00:07\u003c00:10,  8.25it/s]\n"}
+,{"stream_name":"stderr","time":7773.103099991,"data":"\rEvaluating:  43%|████▎     | 66/152 [00:07\u003c00:10,  8.25it/s]\rEvaluating:  44%|████▍     | 67/152 [00:07\u003c00:10,  8.46it/s]\n"}
+,{"stream_name":"stderr","time":7773.236549537,"data":"\rEvaluating:  44%|████▍     | 67/152 [00:07\u003c00:10,  8.46it/s]\rEvaluating:  45%|████▍     | 68/152 [00:08\u003c00:10,  8.12it/s]\n"}
+,{"stream_name":"stderr","time":7773.348730833,"data":"\rEvaluating:  45%|████▍     | 68/152 [00:08\u003c00:10,  8.12it/s]\rEvaluating:  45%|████▌     | 69/152 [00:08\u003c00:09,  8.37it/s]\n"}
+,{"stream_name":"stderr","time":7773.462295711,"data":"\rEvaluating:  45%|████▌     | 69/152 [00:08\u003c00:09,  8.37it/s]\rEvaluating:  46%|████▌     | 70/152 [00:08\u003c00:09,  8.46it/s]\n"}
+,{"stream_name":"stderr","time":7773.575241634,"data":"\rEvaluating:  46%|████▌     | 70/152 [00:08\u003c00:09,  8.46it/s]\rEvaluating:  47%|████▋     | 71/152 [00:08\u003c00:09,  8.59it/s]\n"}
+,{"stream_name":"stderr","time":7773.700873463,"data":"\rEvaluating:  47%|████▋     | 71/152 [00:08\u003c00:09,  8.59it/s]\rEvaluating:  47%|████▋     | 72/152 [00:08\u003c00:09,  8.38it/s]\n"}
+,{"stream_name":"stderr","time":7773.97073281,"data":"\rEvaluating:  47%|████▋     | 72/152 [00:08\u003c00:09,  8.38it/s]\rEvaluating:  49%|████▊     | 74/152 [00:08\u003c00:09,  7.91it/s]\n"}
+,{"stream_name":"stderr","time":7774.096790429,"data":"\rEvaluating:  49%|████▊     | 74/152 [00:08\u003c00:09,  7.91it/s]\rEvaluating:  49%|████▉     | 75/152 [00:08\u003c00:09,  7.92it/s]\n"}
+,{"stream_name":"stderr","time":7774.210363049,"data":"\rEvaluating:  49%|████▉     | 75/152 [00:08\u003c00:09,  7.92it/s]\rEvaluating:  50%|█████     | 76/152 [00:09\u003c00:09,  8.15it/s]\n"}
+,{"stream_name":"stderr","time":7774.428312925,"data":"\rEvaluating:  50%|█████     | 76/152 [00:09\u003c00:09,  8.15it/s]\rEvaluating:  51%|█████▏    | 78/152 [00:09\u003c00:08,  8.53it/s]\n"}
+,{"stream_name":"stderr","time":7774.543356428,"data":"\rEvaluating:  51%|█████▏    | 78/152 [00:09\u003c00:08,  8.53it/s]\rEvaluating:  52%|█████▏    | 79/152 [00:09\u003c00:08,  8.58it/s]\n"}
+,{"stream_name":"stderr","time":7774.665475279,"data":"\rEvaluating:  52%|█████▏    | 79/152 [00:09\u003c00:08,  8.58it/s]\rEvaluating:  53%|█████▎    | 80/152 [00:09\u003c00:08,  8.47it/s]\n"}
+,{"stream_name":"stderr","time":7774.776556477,"data":"\rEvaluating:  53%|█████▎    | 80/152 [00:09\u003c00:08,  8.47it/s]\rEvaluating:  53%|█████▎    | 81/152 [00:09\u003c00:08,  8.60it/s]\n"}
+,{"stream_name":"stderr","time":7774.981193791,"data":"\rEvaluating:  53%|█████▎    | 81/152 [00:09\u003c00:08,  8.60it/s]\rEvaluating:  55%|█████▍    | 83/152 [00:09\u003c00:07,  9.10it/s]\n"}
+,{"stream_name":"stderr","time":7775.177477047,"data":"\rEvaluating:  55%|█████▍    | 83/152 [00:09\u003c00:07,  9.10it/s]\rEvaluating:  56%|█████▌    | 85/152 [00:10\u003c00:07,  9.49it/s]\n"}
+,{"stream_name":"stderr","time":7775.328693867,"data":"\rEvaluating:  56%|█████▌    | 85/152 [00:10\u003c00:07,  9.49it/s]\rEvaluating:  57%|█████▋    | 86/152 [00:10\u003c00:07,  8.65it/s]\n"}
+,{"stream_name":"stderr","time":7775.455263033,"data":"\rEvaluating:  57%|█████▋    | 86/152 [00:10\u003c00:07,  8.65it/s]\rEvaluating:  57%|█████▋    | 87/152 [00:10\u003c00:07,  8.47it/s]\n"}
+,{"stream_name":"stderr","time":7775.611591768,"data":"\rEvaluating:  57%|█████▋    | 87/152 [00:10\u003c00:07,  8.47it/s]\rEvaluating:  58%|█████▊    | 88/152 [00:10\u003c00:08,  7.83it/s]\n"}
+,{"stream_name":"stderr","time":7775.781868963,"data":"\rEvaluating:  58%|█████▊    | 88/152 [00:10\u003c00:08,  7.83it/s]\rEvaluating:  59%|█████▊    | 89/152 [00:10\u003c00:08,  7.20it/s]\n"}
+,{"stream_name":"stderr","time":7775.893086043,"data":"\rEvaluating:  59%|█████▊    | 89/152 [00:10\u003c00:08,  7.20it/s]\rEvaluating:  59%|█████▉    | 90/152 [00:10\u003c00:08,  7.62it/s]\n"}
+,{"stream_name":"stderr","time":7776.028026553,"data":"\rEvaluating:  59%|█████▉    | 90/152 [00:10\u003c00:08,  7.62it/s]\rEvaluating:  60%|█████▉    | 91/152 [00:10\u003c00:08,  7.55it/s]\n"}
+,{"stream_name":"stderr","time":7776.144449175,"data":"\rEvaluating:  60%|█████▉    | 91/152 [00:10\u003c00:08,  7.55it/s]\rEvaluating:  61%|██████    | 92/152 [00:11\u003c00:07,  7.83it/s]\n"}
+,{"stream_name":"stderr","time":7776.252934685,"data":"\rEvaluating:  61%|██████    | 92/152 [00:11\u003c00:07,  7.83it/s]\rEvaluating:  61%|██████    | 93/152 [00:11\u003c00:07,  8.17it/s]\n"}
+,{"stream_name":"stderr","time":7776.363634738,"data":"\rEvaluating:  61%|██████    | 93/152 [00:11\u003c00:07,  8.17it/s]\rEvaluating:  62%|██████▏   | 94/152 [00:11\u003c00:06,  8.41it/s]\n"}
+,{"stream_name":"stderr","time":7776.517439059,"data":"\rEvaluating:  62%|██████▏   | 94/152 [00:11\u003c00:06,  8.41it/s]\rEvaluating:  62%|██████▎   | 95/152 [00:11\u003c00:07,  7.76it/s]\n"}
+,{"stream_name":"stderr","time":7776.647955005,"data":"\rEvaluating:  62%|██████▎   | 95/152 [00:11\u003c00:07,  7.76it/s]\rEvaluating:  63%|██████▎   | 96/152 [00:11\u003c00:07,  7.72it/s]\n"}
+,{"stream_name":"stderr","time":7776.76298624,"data":"\rEvaluating:  63%|██████▎   | 96/152 [00:11\u003c00:07,  7.72it/s]\rEvaluating:  64%|██████▍   | 97/152 [00:11\u003c00:06,  7.99it/s]\n"}
+,{"stream_name":"stderr","time":7776.905139374,"data":"\rEvaluating:  64%|██████▍   | 97/152 [00:11\u003c00:06,  7.99it/s]\rEvaluating:  64%|██████▍   | 98/152 [00:11\u003c00:07,  7.69it/s]\n"}
+,{"stream_name":"stderr","time":7777.040160758,"data":"\rEvaluating:  64%|██████▍   | 98/152 [00:11\u003c00:07,  7.69it/s]\rEvaluating:  65%|██████▌   | 99/152 [00:11\u003c00:06,  7.58it/s]\n"}
+,{"stream_name":"stderr","time":7777.233996455,"data":"\rEvaluating:  65%|██████▌   | 99/152 [00:11\u003c00:06,  7.58it/s]\rEvaluating:  66%|██████▋   | 101/152 [00:12\u003c00:05,  8.66it/s]\n"}
+,{"stream_name":"stderr","time":7777.361214703,"data":"\rEvaluating:  66%|██████▋   | 101/152 [00:12\u003c00:05,  8.66it/s]\rEvaluating:  67%|██████▋   | 102/152 [00:12\u003c00:05,  8.45it/s]\n"}
+,{"stream_name":"stderr","time":7777.555601008,"data":"\rEvaluating:  67%|██████▋   | 102/152 [00:12\u003c00:05,  8.45it/s]\rEvaluating:  68%|██████▊   | 104/152 [00:12\u003c00:05,  9.12it/s]\n"}
+,{"stream_name":"stderr","time":7777.751233028,"data":"\rEvaluating:  68%|██████▊   | 104/152 [00:12\u003c00:05,  9.12it/s]\rEvaluating:  70%|██████▉   | 106/152 [00:12\u003c00:04,  9.50it/s]\n"}
+,{"stream_name":"stderr","time":7777.969009415,"data":"\rEvaluating:  70%|██████▉   | 106/152 [00:12\u003c00:04,  9.50it/s]\rEvaluating:  71%|███████   | 108/152 [00:12\u003c00:04,  9.37it/s]\n"}
+,{"stream_name":"stderr","time":7778.101966001,"data":"\rEvaluating:  71%|███████   | 108/152 [00:12\u003c00:04,  9.37it/s]\rEvaluating:  72%|███████▏  | 109/152 [00:12\u003c00:04,  8.93it/s]\n"}
+,{"stream_name":"stderr","time":7778.239904583,"data":"\rEvaluating:  72%|███████▏  | 109/152 [00:12\u003c00:04,  8.93it/s]\rEvaluating:  72%|███████▏  | 110/152 [00:13\u003c00:04,  8.52it/s]\n"}
+,{"stream_name":"stderr","time":7778.362486703,"data":"\rEvaluating:  72%|███████▏  | 110/152 [00:13\u003c00:04,  8.52it/s]\rEvaluating:  73%|███████▎  | 111/152 [00:13\u003c00:04,  8.41it/s]\n"}
+,{"stream_name":"stderr","time":7778.473824377,"data":"\rEvaluating:  73%|███████▎  | 111/152 [00:13\u003c00:04,  8.41it/s]\rEvaluating:  74%|███████▎  | 112/152 [00:13\u003c00:04,  8.55it/s]\n"}
+,{"stream_name":"stderr","time":7778.665126237,"data":"\rEvaluating:  74%|███████▎  | 112/152 [00:13\u003c00:04,  8.55it/s]\rEvaluating:  75%|███████▌  | 114/152 [00:13\u003c00:04,  9.27it/s]\n"}
+,{"stream_name":"stderr","time":7778.766992732,"data":"\rEvaluating:  75%|███████▌  | 114/152 [00:13\u003c00:04,  9.27it/s]\rEvaluating:  76%|███████▌  | 115/152 [00:13\u003c00:03,  9.41it/s]\n"}
+,{"stream_name":"stderr","time":7778.888328255,"data":"\rEvaluating:  76%|███████▌  | 115/152 [00:13\u003c00:03,  9.41it/s]\rEvaluating:  76%|███████▋  | 116/152 [00:13\u003c00:03,  9.06it/s]\n"}
+,{"stream_name":"stderr","time":7779.011542627,"data":"\rEvaluating:  76%|███████▋  | 116/152 [00:13\u003c00:03,  9.06it/s]\rEvaluating:  77%|███████▋  | 117/152 [00:13\u003c00:03,  8.79it/s]\n"}
+,{"stream_name":"stderr","time":7779.117904763,"data":"\rEvaluating:  77%|███████▋  | 117/152 [00:13\u003c00:03,  8.79it/s]\rEvaluating:  78%|███████▊  | 118/152 [00:13\u003c00:03,  8.95it/s]\n"}
+,{"stream_name":"stderr","time":7779.348674395,"data":"\rEvaluating:  78%|███████▊  | 118/152 [00:13\u003c00:03,  8.95it/s]\rEvaluating:  79%|███████▉  | 120/152 [00:14\u003c00:03,  8.85it/s]\n"}
+,{"stream_name":"stderr","time":7779.550808548,"data":"\rEvaluating:  79%|███████▉  | 120/152 [00:14\u003c00:03,  8.85it/s]\rEvaluating:  80%|████████  | 122/152 [00:14\u003c00:03,  9.22it/s]\n"}
+,{"stream_name":"stderr","time":7779.673306973,"data":"\rEvaluating:  80%|████████  | 122/152 [00:14\u003c00:03,  9.22it/s]\rEvaluating:  81%|████████  | 123/152 [00:14\u003c00:03,  8.95it/s]\n"}
+,{"stream_name":"stderr","time":7779.789351613,"data":"\rEvaluating:  81%|████████  | 123/152 [00:14\u003c00:03,  8.95it/s]\rEvaluating:  82%|████████▏ | 124/152 [00:14\u003c00:03,  8.89it/s]\n"}
+,{"stream_name":"stderr","time":7779.99383033,"data":"\rEvaluating:  82%|████████▏ | 124/152 [00:14\u003c00:03,  8.89it/s]\rEvaluating:  83%|████████▎ | 126/152 [00:14\u003c00:02,  9.21it/s]\n"}
+,{"stream_name":"stderr","time":7780.109791654,"data":"\rEvaluating:  83%|████████▎ | 126/152 [00:14\u003c00:02,  9.21it/s]\rEvaluating:  84%|████████▎ | 127/152 [00:14\u003c00:02,  9.07it/s]\n"}
+,{"stream_name":"stderr","time":7780.243610769,"data":"\rEvaluating:  84%|████████▎ | 127/152 [00:14\u003c00:02,  9.07it/s]\rEvaluating:  84%|████████▍ | 128/152 [00:15\u003c00:02,  8.64it/s]\n"}
+,{"stream_name":"stderr","time":7780.358914549,"data":"\rEvaluating:  84%|████████▍ | 128/152 [00:15\u003c00:02,  8.64it/s]\rEvaluating:  85%|████████▍ | 129/152 [00:15\u003c00:02,  8.63it/s]\n"}
+,{"stream_name":"stderr","time":7780.549171192,"data":"\rEvaluating:  85%|████████▍ | 129/152 [00:15\u003c00:02,  8.63it/s]\rEvaluating:  86%|████████▌ | 131/152 [00:15\u003c00:02,  9.36it/s]\n"}
+,{"stream_name":"stderr","time":7780.65836795,"data":"\rEvaluating:  86%|████████▌ | 131/152 [00:15\u003c00:02,  9.36it/s]\rEvaluating:  87%|████████▋ | 132/152 [00:15\u003c00:02,  9.29it/s]\n"}
+,{"stream_name":"stderr","time":7780.772679359,"data":"\rEvaluating:  87%|████████▋ | 132/152 [00:15\u003c00:02,  9.29it/s]\rEvaluating:  88%|████████▊ | 133/152 [00:15\u003c00:02,  9.15it/s]\n"}
+,{"stream_name":"stderr","time":7780.961297115,"data":"\rEvaluating:  88%|████████▊ | 133/152 [00:15\u003c00:02,  9.15it/s]\rEvaluating:  89%|████████▉ | 135/152 [00:15\u003c00:01,  9.71it/s]\n"}
+,{"stream_name":"stderr","time":7781.085159917,"data":"\rEvaluating:  89%|████████▉ | 135/152 [00:15\u003c00:01,  9.71it/s]\rEvaluating:  89%|████████▉ | 136/152 [00:15\u003c00:01,  9.30it/s]\n"}
+,{"stream_name":"stderr","time":7781.208465449,"data":"\rEvaluating:  89%|████████▉ | 136/152 [00:15\u003c00:01,  9.30it/s]\rEvaluating:  90%|█████████ | 137/152 [00:16\u003c00:01,  8.96it/s]\n"}
+,{"stream_name":"stderr","time":7781.324975221,"data":"\rEvaluating:  90%|█████████ | 137/152 [00:16\u003c00:01,  8.96it/s]\rEvaluating:  91%|█████████ | 138/152 [00:16\u003c00:01,  8.84it/s]\n"}
+,{"stream_name":"stderr","time":7781.533716421,"data":"\rEvaluating:  91%|█████████ | 138/152 [00:16\u003c00:01,  8.84it/s]\rEvaluating:  92%|█████████▏| 140/152 [00:16\u003c00:01,  9.14it/s]\n"}
+,{"stream_name":"stderr","time":7781.651936256,"data":"\rEvaluating:  92%|█████████▏| 140/152 [00:16\u003c00:01,  9.14it/s]\rEvaluating:  93%|█████████▎| 141/152 [00:16\u003c00:01,  9.01it/s]\n"}
+,{"stream_name":"stderr","time":7781.777617173,"data":"\rEvaluating:  93%|█████████▎| 141/152 [00:16\u003c00:01,  9.01it/s]\rEvaluating:  93%|█████████▎| 142/152 [00:16\u003c00:01,  8.68it/s]\n"}
+,{"stream_name":"stderr","time":7781.909006641,"data":"\rEvaluating:  93%|█████████▎| 142/152 [00:16\u003c00:01,  8.68it/s]\rEvaluating:  94%|█████████▍| 143/152 [00:16\u003c00:01,  8.39it/s]\n"}
+,{"stream_name":"stderr","time":7782.035555469,"data":"\rEvaluating:  94%|█████████▍| 143/152 [00:16\u003c00:01,  8.39it/s]\rEvaluating:  95%|█████████▍| 144/152 [00:16\u003c00:00,  8.24it/s]\n"}
+,{"stream_name":"stderr","time":7782.17125384,"data":"\rEvaluating:  95%|█████████▍| 144/152 [00:16\u003c00:00,  8.24it/s]\rEvaluating:  95%|█████████▌| 145/152 [00:17\u003c00:00,  7.99it/s]\n"}
+,{"stream_name":"stderr","time":7782.300689311,"data":"\rEvaluating:  95%|█████████▌| 145/152 [00:17\u003c00:00,  7.99it/s]\rEvaluating:  96%|█████████▌| 146/152 [00:17\u003c00:00,  7.93it/s]\n"}
+,{"stream_name":"stderr","time":7782.429847809,"data":"\rEvaluating:  96%|█████████▌| 146/152 [00:17\u003c00:00,  7.93it/s]\rEvaluating:  97%|█████████▋| 147/152 [00:17\u003c00:00,  7.86it/s]\n"}
+,{"stream_name":"stderr","time":7782.601537553,"data":"\rEvaluating:  97%|█████████▋| 147/152 [00:17\u003c00:00,  7.86it/s]\rEvaluating:  98%|█████████▊| 149/152 [00:17\u003c00:00,  9.20it/s]\n"}
+,{"stream_name":"stderr","time":7782.704854789,"data":"\rEvaluating:  98%|█████████▊| 149/152 [00:17\u003c00:00,  9.20it/s]\rEvaluating:  99%|█████████▊| 150/152 [00:17\u003c00:00,  9.33it/s]\n"}
+,{"stream_name":"stderr","time":7782.827459467,"data":"\rEvaluating:  99%|█████████▊| 150/152 [00:17\u003c00:00,  9.33it/s]\rEvaluating:  99%|█████████▉| 151/152 [00:17\u003c00:00,  8.98it/s]\n"}
+,{"stream_name":"stderr","time":7782.887582982,"data":"\rEvaluating:  99%|█████████▉| 151/152 [00:17\u003c00:00,  8.98it/s]\rEvaluating: 100%|██████████| 152/152 [00:17\u003c00:00,  8.55it/s]\n"}
+,{"stream_name":"stdout","time":7782.90465397,"data":"Accuracy: 0.9119 (4419/4846)\n"}
+,{"stream_name":"stdout","time":7782.904683521,"data":"Macro F1: 0.9019\n"}
+,{"stream_name":"stdout","time":7782.90468917,"data":"\n"}
+,{"stream_name":"stdout","time":7782.904692957,"data":"              precision    recall  f1-score   support\n"}
+,{"stream_name":"stdout","time":7782.904696993,"data":"\n"}
+,{"stream_name":"stdout","time":7782.904700853,"data":"    NEGATIVE       0.95      0.86      0.90       604\n"}
+,{"stream_name":"stdout","time":7782.904705023,"data":"     NEUTRAL       0.90      0.96      0.93      2879\n"}
+,{"stream_name":"stdout","time":7782.904708982,"data":"    POSITIVE       0.92      0.82      0.87      1363\n"}
+,{"stream_name":"stdout","time":7782.904728582,"data":"\n"}
+,{"stream_name":"stdout","time":7782.904733118,"data":"    accuracy                           0.91      4846\n"}
+,{"stream_name":"stdout","time":7782.904738062,"data":"   macro avg       0.93      0.88      0.90      4846\n"}
+,{"stream_name":"stdout","time":7782.904742287,"data":"weighted avg       0.91      0.91      0.91      4846\n"}
+,{"stream_name":"stdout","time":7782.904746283,"data":"\n"}
+,{"stream_name":"stderr","time":7782.905539073,"data":"\rEvaluating: 100%|██████████| 152/152 [00:17\u003c00:00,  8.55it/s]\n"}
+,{"stream_name":"stderr","time":7782.9055606,"data":"\n"}
+,{"stream_name":"stderr","time":7782.905565748,"data":"\n"}
+,{"stream_name":"stdout","time":7782.940849733,"data":"============================================================\n"}
+,{"stream_name":"stdout","time":7782.940876867,"data":"ModernFinBERT — FPB sentences_allAgree\n"}
+,{"stream_name":"stdout","time":7782.940883184,"data":"============================================================\n"}
+,{"stream_name":"stderr","time":7782.941800209,"data":"\rEvaluating:   0%|          | 0/71 [00:00\u003c?, ?it/s]\n"}
+,{"stream_name":"stderr","time":7783.07288988,"data":"\rEvaluating:   0%|          | 0/71 [00:00\u003c?, ?it/s]\rEvaluating:   1%|▏         | 1/71 [00:00\u003c00:09,  7.75it/s]\n"}
+,{"stream_name":"stderr","time":7783.197491082,"data":"\rEvaluating:   1%|▏         | 1/71 [00:00\u003c00:09,  7.75it/s]\rEvaluating:   3%|▎         | 2/71 [00:00\u003c00:08,  7.89it/s]\n"}
+,{"stream_name":"stderr","time":7783.30323618,"data":"\rEvaluating:   3%|▎         | 2/71 [00:00\u003c00:08,  7.89it/s]\rEvaluating:   4%|▍         | 3/71 [00:00\u003c00:07,  8.59it/s]\n"}
+,{"stream_name":"stderr","time":7783.433368789,"data":"\rEvaluating:   4%|▍         | 3/71 [00:00\u003c00:07,  8.59it/s]\rEvaluating:   6%|▌         | 4/71 [00:00\u003c00:08,  8.17it/s]\n"}
+,{"stream_name":"stderr","time":7783.56269295,"data":"\rEvaluating:   6%|▌         | 4/71 [00:00\u003c00:08,  8.17it/s]\rEvaluating:   7%|▋         | 5/71 [00:00\u003c00:08,  8.02it/s]\n"}
+,{"stream_name":"stderr","time":7783.775690945,"data":"\rEvaluating:   7%|▋         | 5/71 [00:00\u003c00:08,  8.02it/s]\rEvaluating:  10%|▉         | 7/71 [00:00\u003c00:07,  8.64it/s]\n"}
+,{"stream_name":"stderr","time":7783.890772045,"data":"\rEvaluating:  10%|▉         | 7/71 [00:00\u003c00:07,  8.64it/s]\rEvaluating:  11%|█▏        | 8/71 [00:00\u003c00:07,  8.65it/s]\n"}
+,{"stream_name":"stderr","time":7784.003027029,"data":"\rEvaluating:  11%|█▏        | 8/71 [00:00\u003c00:07,  8.65it/s]\rEvaluating:  13%|█▎        | 9/71 [00:01\u003c00:07,  8.75it/s]\n"}
+,{"stream_name":"stderr","time":7784.132418068,"data":"\rEvaluating:  13%|█▎        | 9/71 [00:01\u003c00:07,  8.75it/s]\rEvaluating:  14%|█▍        | 10/71 [00:01\u003c00:07,  8.43it/s]\n"}
+,{"stream_name":"stderr","time":7784.27122116,"data":"\rEvaluating:  14%|█▍        | 10/71 [00:01\u003c00:07,  8.43it/s]\rEvaluating:  15%|█▌        | 11/71 [00:01\u003c00:07,  8.04it/s]\n"}
+,{"stream_name":"stderr","time":7784.400486776,"data":"\rEvaluating:  15%|█▌        | 11/71 [00:01\u003c00:07,  8.04it/s]\rEvaluating:  17%|█▋        | 12/71 [00:01\u003c00:07,  7.95it/s]\n"}
+,{"stream_name":"stderr","time":7784.509919018,"data":"\rEvaluating:  17%|█▋        | 12/71 [00:01\u003c00:07,  7.95it/s]\rEvaluating:  18%|█▊        | 13/71 [00:01\u003c00:07,  8.26it/s]\n"}
+,{"stream_name":"stderr","time":7784.637231053,"data":"\rEvaluating:  18%|█▊        | 13/71 [00:01\u003c00:07,  8.26it/s]\rEvaluating:  20%|█▉        | 14/71 [00:01\u003c00:07,  8.12it/s]\n"}
+,{"stream_name":"stderr","time":7784.743903715,"data":"\rEvaluating:  20%|█▉        | 14/71 [00:01\u003c00:07,  8.12it/s]\rEvaluating:  21%|██        | 15/71 [00:01\u003c00:06,  8.49it/s]\n"}
+,{"stream_name":"stderr","time":7784.870948084,"data":"\rEvaluating:  21%|██        | 15/71 [00:01\u003c00:06,  8.49it/s]\rEvaluating:  23%|██▎       | 16/71 [00:01\u003c00:06,  8.27it/s]\n"}
+,{"stream_name":"stderr","time":7784.973594654,"data":"\rEvaluating:  23%|██▎       | 16/71 [00:01\u003c00:06,  8.27it/s]\rEvaluating:  24%|██▍       | 17/71 [00:02\u003c00:06,  8.66it/s]\n"}
+,{"stream_name":"stderr","time":7785.104919108,"data":"\rEvaluating:  24%|██▍       | 17/71 [00:02\u003c00:06,  8.66it/s]\rEvaluating:  25%|██▌       | 18/71 [00:02\u003c00:06,  8.34it/s]\n"}
+,{"stream_name":"stderr","time":7785.217020413,"data":"\rEvaluating:  25%|██▌       | 18/71 [00:02\u003c00:06,  8.34it/s]\rEvaluating:  27%|██▋       | 19/71 [00:02\u003c00:06,  8.47it/s]\n"}
+,{"stream_name":"stderr","time":7785.352870051,"data":"\rEvaluating:  27%|██▋       | 19/71 [00:02\u003c00:06,  8.47it/s]\rEvaluating:  28%|██▊       | 20/71 [00:02\u003c00:06,  8.11it/s]\n"}
+,{"stream_name":"stderr","time":7785.480883922,"data":"\rEvaluating:  28%|██▊       | 20/71 [00:02\u003c00:06,  8.11it/s]\rEvaluating:  30%|██▉       | 21/71 [00:02\u003c00:06,  8.03it/s]\n"}
+,{"stream_name":"stderr","time":7785.607357984,"data":"\rEvaluating:  30%|██▉       | 21/71 [00:02\u003c00:06,  8.03it/s]\rEvaluating:  31%|███       | 22/71 [00:02\u003c00:06,  8.00it/s]\n"}
+,{"stream_name":"stderr","time":7785.710066701,"data":"\rEvaluating:  31%|███       | 22/71 [00:02\u003c00:06,  8.00it/s]\rEvaluating:  32%|███▏      | 23/71 [00:02\u003c00:05,  8.45it/s]\n"}
+,{"stream_name":"stderr","time":7785.935368211,"data":"\rEvaluating:  32%|███▏      | 23/71 [00:02\u003c00:05,  8.45it/s]\rEvaluating:  34%|███▍      | 24/71 [00:02\u003c00:07,  6.66it/s]\n"}
+,{"stream_name":"stderr","time":7786.061277427,"data":"\rEvaluating:  34%|███▍      | 24/71 [00:02\u003c00:07,  6.66it/s]\rEvaluating:  35%|███▌      | 25/71 [00:03\u003c00:06,  7.00it/s]\n"}
+,{"stream_name":"stderr","time":7786.195766956,"data":"\rEvaluating:  35%|███▌      | 25/71 [00:03\u003c00:06,  7.00it/s]\rEvaluating:  37%|███▋      | 26/71 [00:03\u003c00:06,  7.10it/s]\n"}
+,{"stream_name":"stderr","time":7786.321291315,"data":"\rEvaluating:  37%|███▋      | 26/71 [00:03\u003c00:06,  7.10it/s]\rEvaluating:  38%|███▊      | 27/71 [00:03\u003c00:05,  7.36it/s]\n"}
+,{"stream_name":"stderr","time":7786.445833477,"data":"\rEvaluating:  38%|███▊      | 27/71 [00:03\u003c00:05,  7.36it/s]\rEvaluating:  39%|███▉      | 28/71 [00:03\u003c00:05,  7.53it/s]\n"}
+,{"stream_name":"stderr","time":7786.592028178,"data":"\rEvaluating:  39%|███▉      | 28/71 [00:03\u003c00:05,  7.53it/s]\rEvaluating:  41%|████      | 29/71 [00:03\u003c00:05,  7.32it/s]\n"}
+,{"stream_name":"stderr","time":7786.800254116,"data":"\rEvaluating:  41%|████      | 29/71 [00:03\u003c00:05,  7.32it/s]\rEvaluating:  44%|████▎     | 31/71 [00:03\u003c00:04,  8.23it/s]\n"}
+,{"stream_name":"stderr","time":7786.92207954,"data":"\rEvaluating:  44%|████▎     | 31/71 [00:03\u003c00:04,  8.23it/s]\rEvaluating:  45%|████▌     | 32/71 [00:03\u003c00:04,  8.20it/s]\n"}
+,{"stream_name":"stderr","time":7787.029827193,"data":"\rEvaluating:  45%|████▌     | 32/71 [00:03\u003c00:04,  8.20it/s]\rEvaluating:  46%|████▋     | 33/71 [00:04\u003c00:04,  8.48it/s]\n"}
+,{"stream_name":"stderr","time":7787.207524863,"data":"\rEvaluating:  46%|████▋     | 33/71 [00:04\u003c00:04,  8.48it/s]\rEvaluating:  49%|████▉     | 35/71 [00:04\u003c00:03,  9.48it/s]\n"}
+,{"stream_name":"stderr","time":7787.359024891,"data":"\rEvaluating:  49%|████▉     | 35/71 [00:04\u003c00:03,  9.48it/s]\rEvaluating:  51%|█████     | 36/71 [00:04\u003c00:04,  8.59it/s]\n"}
+,{"stream_name":"stderr","time":7787.472744683,"data":"\rEvaluating:  51%|█████     | 36/71 [00:04\u003c00:04,  8.59it/s]\rEvaluating:  52%|█████▏    | 37/71 [00:04\u003c00:03,  8.66it/s]\n"}
+,{"stream_name":"stderr","time":7787.582600126,"data":"\rEvaluating:  52%|█████▏    | 37/71 [00:04\u003c00:03,  8.66it/s]\rEvaluating:  54%|█████▎    | 38/71 [00:04\u003c00:03,  8.77it/s]\n"}
+,{"stream_name":"stderr","time":7787.689978462,"data":"\rEvaluating:  54%|█████▎    | 38/71 [00:04\u003c00:03,  8.77it/s]\rEvaluating:  55%|█████▍    | 39/71 [00:04\u003c00:03,  8.89it/s]\n"}
+,{"stream_name":"stderr","time":7787.896749025,"data":"\rEvaluating:  55%|█████▍    | 39/71 [00:04\u003c00:03,  8.89it/s]\rEvaluating:  58%|█████▊    | 41/71 [00:04\u003c00:03,  9.21it/s]\n"}
+,{"stream_name":"stderr","time":7788.000487636,"data":"\rEvaluating:  58%|█████▊    | 41/71 [00:04\u003c00:03,  9.21it/s]\rEvaluating:  59%|█████▉    | 42/71 [00:05\u003c00:03,  9.31it/s]\n"}
+,{"stream_name":"stderr","time":7788.143137382,"data":"\rEvaluating:  59%|█████▉    | 42/71 [00:05\u003c00:03,  9.31it/s]\rEvaluating:  61%|██████    | 43/71 [00:05\u003c00:03,  8.62it/s]\n"}
+,{"stream_name":"stderr","time":7788.335011471,"data":"\rEvaluating:  61%|██████    | 43/71 [00:05\u003c00:03,  8.62it/s]\rEvaluating:  63%|██████▎   | 45/71 [00:05\u003c00:02,  9.28it/s]\n"}
+,{"stream_name":"stderr","time":7788.536131382,"data":"\rEvaluating:  63%|██████▎   | 45/71 [00:05\u003c00:02,  9.28it/s]\rEvaluating:  66%|██████▌   | 47/71 [00:05\u003c00:02,  9.53it/s]\n"}
+,{"stream_name":"stderr","time":7788.719763558,"data":"\rEvaluating:  66%|██████▌   | 47/71 [00:05\u003c00:02,  9.53it/s]\rEvaluating:  69%|██████▉   | 49/71 [00:05\u003c00:02,  9.97it/s]\n"}
+,{"stream_name":"stderr","time":7788.851276093,"data":"\rEvaluating:  69%|██████▉   | 49/71 [00:05\u003c00:02,  9.97it/s]\rEvaluating:  70%|███████   | 50/71 [00:05\u003c00:02,  9.37it/s]\n"}
+,{"stream_name":"stderr","time":7788.964783905,"data":"\rEvaluating:  70%|███████   | 50/71 [00:05\u003c00:02,  9.37it/s]\rEvaluating:  72%|███████▏  | 51/71 [00:06\u003c00:02,  9.26it/s]\n"}
+,{"stream_name":"stderr","time":7789.161957506,"data":"\rEvaluating:  72%|███████▏  | 51/71 [00:06\u003c00:02,  9.26it/s]\rEvaluating:  75%|███████▍  | 53/71 [00:06\u003c00:01,  9.56it/s]\n"}
+,{"stream_name":"stderr","time":7789.35852681,"data":"\rEvaluating:  75%|███████▍  | 53/71 [00:06\u003c00:01,  9.56it/s]\rEvaluating:  77%|███████▋  | 55/71 [00:06\u003c00:01,  9.77it/s]\n"}
+,{"stream_name":"stderr","time":7789.490258965,"data":"\rEvaluating:  77%|███████▋  | 55/71 [00:06\u003c00:01,  9.77it/s]\rEvaluating:  79%|███████▉  | 56/71 [00:06\u003c00:01,  9.24it/s]\n"}
+,{"stream_name":"stderr","time":7789.595366209,"data":"\rEvaluating:  79%|███████▉  | 56/71 [00:06\u003c00:01,  9.24it/s]\rEvaluating:  80%|████████  | 57/71 [00:06\u003c00:01,  9.29it/s]\n"}
+,{"stream_name":"stderr","time":7789.776697826,"data":"\rEvaluating:  80%|████████  | 57/71 [00:06\u003c00:01,  9.29it/s]\rEvaluating:  83%|████████▎ | 59/71 [00:06\u003c00:01,  9.90it/s]\n"}
+,{"stream_name":"stderr","time":7789.911106195,"data":"\rEvaluating:  83%|████████▎ | 59/71 [00:06\u003c00:01,  9.90it/s]\rEvaluating:  85%|████████▍ | 60/71 [00:06\u003c00:01,  9.27it/s]\n"}
+,{"stream_name":"stderr","time":7790.02573876,"data":"\rEvaluating:  85%|████████▍ | 60/71 [00:06\u003c00:01,  9.27it/s]\rEvaluating:  86%|████████▌ | 61/71 [00:07\u003c00:01,  9.10it/s]\n"}
+,{"stream_name":"stderr","time":7790.141186566,"data":"\rEvaluating:  86%|████████▌ | 61/71 [00:07\u003c00:01,  9.10it/s]\rEvaluating:  87%|████████▋ | 62/71 [00:07\u003c00:01,  8.99it/s]\n"}
+,{"stream_name":"stderr","time":7790.251949927,"data":"\rEvaluating:  87%|████████▋ | 62/71 [00:07\u003c00:01,  8.99it/s]\rEvaluating:  89%|████████▊ | 63/71 [00:07\u003c00:00,  9.01it/s]\n"}
+,{"stream_name":"stderr","time":7790.366082453,"data":"\rEvaluating:  89%|████████▊ | 63/71 [00:07\u003c00:00,  9.01it/s]\rEvaluating:  90%|█████████ | 64/71 [00:07\u003c00:00,  8.93it/s]\n"}
+,{"stream_name":"stderr","time":7790.481495752,"data":"\rEvaluating:  90%|█████████ | 64/71 [00:07\u003c00:00,  8.93it/s]\rEvaluating:  92%|█████████▏| 65/71 [00:07\u003c00:00,  8.84it/s]\n"}
+,{"stream_name":"stderr","time":7790.60936634,"data":"\rEvaluating:  92%|█████████▏| 65/71 [00:07\u003c00:00,  8.84it/s]\rEvaluating:  93%|█████████▎| 66/71 [00:07\u003c00:00,  8.54it/s]\n"}
+,{"stream_name":"stderr","time":7790.737303038,"data":"\rEvaluating:  93%|█████████▎| 66/71 [00:07\u003c00:00,  8.54it/s]\rEvaluating:  94%|█████████▍| 67/71 [00:07\u003c00:00,  8.33it/s]\n"}
+,{"stream_name":"stderr","time":7790.858571553,"data":"\rEvaluating:  94%|█████████▍| 67/71 [00:07\u003c00:00,  8.33it/s]\rEvaluating:  96%|█████████▌| 68/71 [00:07\u003c00:00,  8.28it/s]\n"}
+,{"stream_name":"stderr","time":7791.052103278,"data":"\rEvaluating:  96%|█████████▌| 68/71 [00:07\u003c00:00,  8.28it/s]\rEvaluating:  99%|█████████▊| 70/71 [00:08\u003c00:00,  9.11it/s]\n"}
+,{"stream_name":"stderr","time":7791.150963996,"data":"\rEvaluating:  99%|█████████▊| 70/71 [00:08\u003c00:00,  9.11it/s]\rEvaluating: 100%|██████████| 71/71 [00:08\u003c00:00,  8.65it/s]\n"}
+,{"stream_name":"stdout","time":7791.165701822,"data":"Accuracy: 0.9903 (2242/2264)\n"}
+,{"stream_name":"stdout","time":7791.165723302,"data":"Macro F1: 0.9866\n"}
+,{"stream_name":"stdout","time":7791.165727319,"data":"\n"}
+,{"stream_name":"stdout","time":7791.165730728,"data":"              precision    recall  f1-score   support\n"}
+,{"stream_name":"stdout","time":7791.165734176,"data":"\n"}
+,{"stream_name":"stdout","time":7791.165737406,"data":"    NEGATIVE       0.99      0.98      0.98       303\n"}
+,{"stream_name":"stdout","time":7791.165740756,"data":"     NEUTRAL       0.99      1.00      0.99      1391\n"}
+,{"stream_name":"stdout","time":7791.165743988,"data":"    POSITIVE       0.99      0.98      0.98       570\n"}
+,{"stream_name":"stdout","time":7791.16574732,"data":"\n"}
+,{"stream_name":"stdout","time":7791.165750685,"data":"    accuracy                           0.99      2264\n"}
+,{"stream_name":"stdout","time":7791.165754022,"data":"   macro avg       0.99      0.98      0.99      2264\n"}
+,{"stream_name":"stdout","time":7791.165757318,"data":"weighted avg       0.99      0.99      0.99      2264\n"}
+,{"stream_name":"stdout","time":7791.165760548,"data":"\n"}
+,{"stream_name":"stderr","time":7791.167534651,"data":"\rEvaluating: 100%|██████████| 71/71 [00:08\u003c00:00,  8.65it/s]\n"}
+,{"stream_name":"stderr","time":7791.167556477,"data":"\n"}
+,{"stream_name":"stderr","time":7791.167561983,"data":"\n"}
+,{"stream_name":"stdout","time":7791.277539326,"data":"=====================================================================================\n"}
+,{"stream_name":"stdout","time":7791.277579755,"data":"FINAL COMPARISON — ModernFinBERT vs Published Baselines\n"}
+,{"stream_name":"stdout","time":7791.277586973,"data":"=====================================================================================\n"}
+,{"stream_name":"stdout","time":7791.277591123,"data":"\n"}
+,{"stream_name":"stdout","time":7791.277594612,"data":"--- FPB sentences_50agree ---\n"}
+,{"stream_name":"stdout","time":7791.277598925,"data":"               Model  Accuracy  Macro F1                                  Eval\n"}
+,{"stream_name":"stdout","time":7791.277603417,"data":"ModernFinBERT (ours)    0.9119    0.9019 held-out (FPB excluded from training)\n"}
+,{"stream_name":"stdout","time":7791.277607672,"data":"    FinBERT-FinVocab    0.8720       NaN         in-domain (90/10, 10-run avg)\n"}
+,{"stream_name":"stdout","time":7791.277612321,"data":"    ProsusAI/finbert    0.8600    0.8400                             in-domain\n"}
+,{"stream_name":"stdout","time":7791.277616547,"data":"              ULMFit    0.8300    0.7900                             in-domain\n"}
+,{"stream_name":"stdout","time":7791.277620281,"data":"           LSTM+ELMo    0.7500    0.7000                             in-domain\n"}
+,{"stream_name":"stdout","time":7791.277623982,"data":"\n"}
+,{"stream_name":"stdout","time":7791.27762738,"data":"--- FPB sentences_allAgree ---\n"}
+,{"stream_name":"stdout","time":7791.277630917,"data":"               Model  Accuracy  Macro F1                                  Eval\n"}
+,{"stream_name":"stdout","time":7791.277634575,"data":"ModernFinBERT (ours)    0.9903    0.9866 held-out (FPB excluded from training)\n"}
+,{"stream_name":"stdout","time":7791.277638283,"data":"    ProsusAI/finbert    0.9700    0.9500                             in-domain\n"}
+,{"stream_name":"stdout","time":7791.277644201,"data":"              ULMFit    0.9300    0.9100                             in-domain\n"}
+,{"stream_name":"stdout","time":7791.277647939,"data":"           LSTM+ELMo    0.8400    0.7700                             in-domain\n"}
+,{"stream_name":"stdout","time":7791.277651841,"data":"\n"}
+,{"stream_name":"stdout","time":7791.277654349,"data":"Note: Baselines trained/tested on FPB in-domain splits.\n"}
+,{"stream_name":"stdout","time":7791.277656865,"data":"ModernFinBERT never saw FPB during training — stricter evaluation.\n"}
+,{"stream_name":"stdout","time":7792.716154453,"data":"Saved to confusion_matrices_modernfinbert.png\n"}
+,{"stream_name":"stderr","time":7798.457652574,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":7798.457703996,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":7798.615172395,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":7798.615198971,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":7799.213546132,"data":"/usr/local/lib/python3.12/dist-packages/traitlets/traitlets.py:2915: FutureWarning: --Exporter.preprocessors=[\"remove_papermill_header.RemovePapermillHeader\"] for containers is deprecated in traitlets 5.0. You can pass `--Exporter.preprocessors item` ... multiple times to add items to a list.\n"}
+,{"stream_name":"stderr","time":7799.213583295,"data":"  warn(\n"}
+,{"stream_name":"stderr","time":7799.242457925,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":7799.685341905,"data":"[NbConvertApp] Writing 534506 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":7802.253505884,"data":"/usr/local/lib/python3.12/dist-packages/traitlets/traitlets.py:2915: FutureWarning: --Exporter.preprocessors=[\"nbconvert.preprocessors.ExtractOutputPreprocessor\"] for containers is deprecated in traitlets 5.0. You can pass `--Exporter.preprocessors item` ... multiple times to add items to a list.\n"}
+,{"stream_name":"stderr","time":7802.253540497,"data":"  warn(\n"}
+,{"stream_name":"stderr","time":7802.277233914,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":7803.288018304,"data":"[NbConvertApp] Support files will be in __results___files/\n"}
+,{"stream_name":"stderr","time":7803.288053133,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":7803.288376701,"data":"[NbConvertApp] Making directory __results___files\n"}
+,{"stream_name":"stderr","time":7803.288623351,"data":"[NbConvertApp] Writing 640387 bytes to __results__.html\n"}
+]
