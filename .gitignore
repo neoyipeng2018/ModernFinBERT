@@ -7,6 +7,7 @@ data/processed/*
 # Model checkpoints
 models/checkpoints/*
 !models/checkpoints/.gitkeep
+kaggle_output/trainer_output/
 
 # Logs
 logs/*
