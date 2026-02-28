@@ -23,7 +23,7 @@ This is a research project for developing ModernFinBERT, a modernized financial 
 ## Current Experiments
 
 ### Notebook 1: Architecture Comparison (`notebooks/01_architecture_comparison.ipynb`)
-Fine-tune ModernBERT-base on aggregated dataset (excluding FPB source 6), evaluate on FPB `sentences_allAgree` and `sentences_50agree`. Compare against ProsusAI/finbert and yiyanghkust/finbert-tone baselines. Reports accuracy, macro-F1, per-class metrics, confusion matrices.
+Fine-tune ModernBERT-base on aggregated dataset (excluding FPB source 5), evaluate on FPB `sentences_allAgree` and `sentences_50agree`. Compare against ProsusAI/finbert and yiyanghkust/finbert-tone baselines. Reports accuracy, macro-F1, per-class metrics, confusion matrices.
 
 ### Notebook 2: DataBoost (`notebooks/02_databoost.ipynb`)
 Train baseline, mine misclassified validation samples, paraphrase errors with Claude API (preserving correct labels), add to training set, retrain. Measures accuracy improvement from targeted augmentation.

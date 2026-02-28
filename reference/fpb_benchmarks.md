@@ -107,6 +107,6 @@
 
 **ProsusAI/finbert and most baselines** train and test on FPB using in-domain splits (80/20 or 90/10). This means the model sees FPB training data during fine-tuning.
 
-**ModernFinBERT (ours)** is trained on aggregated financial sentiment data *excluding* FPB (source 6 filtered out). FPB serves as a fully held-out, zero-shot transfer benchmark. This is a stricter evaluation setting.
+**ModernFinBERT (ours)** is trained on aggregated financial sentiment data *excluding* FPB (source 5 filtered out). FPB serves as a fully held-out, zero-shot transfer benchmark. This is a stricter evaluation setting.
 
 Achieving comparable or better accuracy under this held-out protocol is a stronger result than matching in-domain fine-tuning numbers.
