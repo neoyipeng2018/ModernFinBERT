@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-06-multi-seed",
+  "title": "ModernFinBERT 06 Multi Seed",
+  "code_file": "06_multi_seed.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "robustness", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}

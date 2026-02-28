@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-04-kfold-cv",
+  "title": "ModernFinBERT 04 KFold CV",
+  "code_file": "04_kfold_cv.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "cross-validation", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}

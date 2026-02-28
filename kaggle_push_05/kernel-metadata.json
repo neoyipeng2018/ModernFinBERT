@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-05-controlled-baselines",
+  "title": "ModernFinBERT 05 Controlled Baselines",
+  "code_file": "05_controlled_baselines.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "baselines", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}

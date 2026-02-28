@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-07-self-training",
+  "title": "ModernFinBERT 07 Self Training",
+  "code_file": "07_self_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "self-training", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}
