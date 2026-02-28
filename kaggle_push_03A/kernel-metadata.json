@@ -1,0 +1,16 @@
+{
+  "id": "neoyipeng2018/modernfinbert-03a-test-evaluation",
+  "title": "ModernFinBERT 03A Test Evaluation",
+  "code_file": "03A_test_evaluation.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["evaluation", "nlp"],
+  "dataset_sources": [
+    "neoyipeng2018/modernfinbert-best-checkpoints"
+  ],
+  "kernel_sources": [],
+  "competition_sources": []
+}

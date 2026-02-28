@@ -8,6 +8,7 @@ data/processed/*
 models/checkpoints/*
 !models/checkpoints/.gitkeep
 kaggle_output/trainer_output/
+kaggle_output_*/
 
 # Logs
 logs/*

@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-02-databoost",
+  "title": "ModernFinBERT 02 DataBoost",
+  "code_file": "02_databoost.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "data-augmentation", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}
