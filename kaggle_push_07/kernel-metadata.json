@@ -9,6 +9,6 @@
   "enable_internet": true,
   "keywords": ["modernbert", "finbert", "financial-sentiment", "self-training", "nlp"],
   "dataset_sources": [],
-  "kernel_sources": [],
+  "kernel_sources": ["neoyipeng2018/modernfinbert-02-databoost"],
   "competition_sources": []
 }
