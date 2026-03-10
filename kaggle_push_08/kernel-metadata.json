@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-08-lora-rank-ablation",
+  "title": "ModernFinBERT 08 LoRA Rank Ablation",
+  "code_file": "08_lora_rank_ablation.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "lora", "rank-ablation", "financial-sentiment", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}
