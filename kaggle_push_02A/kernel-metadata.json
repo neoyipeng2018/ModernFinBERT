@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-02a-databoost-vs",
+  "title": "ModernFinBERT 02A DataBoost VS",
+  "code_file": "02A_databoost_vs.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "finbert", "financial-sentiment", "verbalized-sampling", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}

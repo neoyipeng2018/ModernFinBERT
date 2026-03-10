@@ -7,8 +7,16 @@
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "keywords": ["modernbert", "finbert", "financial-sentiment", "self-training", "nlp"],
+  "keywords": [
+    "modernbert",
+    "finbert",
+    "financial-sentiment",
+    "self-training",
+    "nlp"
+  ],
   "dataset_sources": [],
-  "kernel_sources": ["neoyipeng2018/modernfinbert-02-databoost"],
+  "kernel_sources": [
+    "neoyipeng2018/modernfinbert-02a-databoost-vs"
+  ],
   "competition_sources": []
 }
