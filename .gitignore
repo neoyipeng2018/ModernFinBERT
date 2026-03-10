@@ -35,3 +35,11 @@ openai_key.txt
 # Temporary files
 *.tmp
 *.temp
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
