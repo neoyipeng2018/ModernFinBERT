@@ -1,0 +1,14 @@
+{
+  "id": "neoyipeng2018/modernfinbert-09c-clean-holdout",
+  "title": "ModernFinBERT 09C Clean Holdout",
+  "code_file": "09c_clean_holdout.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "keywords": ["modernbert", "bert", "financial-sentiment", "holdout", "nlp"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": []
+}

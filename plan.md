@@ -680,76 +680,73 @@ print("-" * 70)
 
 ## TODO
 
-### Phase 1: Setup & Dedup Audit (Experiment A)
+### Phase 1: Setup & Dedup Audit (Experiment A) — COMPLETE
 
-- [ ] **1.1** Create notebook `notebooks/09a_dedup_audit.ipynb`
-- [ ] **1.2** Load aggregated dataset and FPB, filter out source_id=5
-- [ ] **1.3** Implement exact-match check (normalize + set lookup)
-- [ ] **1.4** Implement fuzzy-match check (SequenceMatcher, >90% threshold)
-- [ ] **1.5** Implement semantic near-duplicate check (sentence-transformers, cosine >0.95)
-- [ ] **1.6** Generate dedup audit summary (counts for each category)
-- [ ] **1.7** If contamination found: build `contaminated_indices` set and save to JSON
-- [ ] **1.8** Run notebook locally (CPU-only, ~30 min)
+- [x] **1.1** Create notebook `notebooks/09a_dedup_audit.ipynb`
+- [x] **1.2** Load aggregated dataset and FPB, filter out source_id=5
+- [x] **1.3** Implement exact-match check (normalize + set lookup)
+- [x] **1.4** Implement fuzzy-match check (SequenceMatcher, >90% threshold)
+- [x] **1.5** Implement semantic near-duplicate check (sentence-transformers, cosine >0.95)
+- [x] **1.6** Generate dedup audit summary (counts for each category)
+- [x] **1.7** No contamination found — `contaminated_indices` not needed
+- [x] **1.8** Ran locally: exact=0, fuzzy=0, semantic=0 — **CLEAN**
 - [ ] **1.9** Record results in `research.md` — proceed to Phase 2 if clean, or to Phase 1b if not
 
-**Gate**: Phase 2+ cannot start until 1.8 completes. If leakage is found, all subsequent experiments use the cleaned dataset.
+**Gate**: PASSED — zero leakage detected. Phase 2+ can proceed with original dataset.
 
-### Phase 1b: Clean Dataset (only if Experiment A finds leakage)
+### Phase 1b: Clean Dataset (only if Experiment A finds leakage) — SKIPPED
 
-- [ ] **1b.1** Remove contaminated samples from training/validation sets
-- [ ] **1b.2** Verify removal didn't break label distribution balance
-- [ ] **1b.3** Save cleaned dataset to local disk or re-upload to HuggingFace
-- [ ] **1b.4** Update all downstream notebooks to load cleaned version
+No leakage found. Phase 1b not needed.
 
-### Phase 2: FPB Head-to-Head (Experiment B)
+### Phase 2: FPB Head-to-Head (Experiment B) — RUNNING ON KAGGLE
 
-- [ ] **2.1** Create notebook `notebooks/09b_fpb_crossval.ipynb`
-- [ ] **2.2** Load FPB `sentences_50agree`, set up 10-fold stratified CV splits (seed=42)
-- [ ] **2.3** Implement `train_and_evaluate()` function with GPU memory cleanup
-- [ ] **2.4** Define 3 model configs: BERT r=16, ModernBERT r=16, ModernBERT r=48
+- [x] **2.1** Create notebook `notebooks/09b_fpb_crossval.ipynb`
+- [x] **2.2** Load FPB `sentences_50agree`, set up 10-fold stratified CV splits (seed=42)
+- [x] **2.3** Implement `train_and_evaluate()` function with GPU memory cleanup
+- [x] **2.4** Define 3 model configs: BERT r=16, ModernBERT r=16, ModernBERT r=48
 - [ ] **2.5** Run all 30 training runs (3 models x 10 folds)
 - [ ] **2.6** Compute summary statistics (mean/std accuracy and macro F1 per model)
 - [ ] **2.7** Run paired t-tests: BERT vs ModernBERT r=16, BERT vs ModernBERT r=48
 - [ ] **2.8** Save full results to `cv_results.json`
-- [ ] **2.9** Create Kaggle push config `kaggle_push_09b/kernel-metadata.json`
-- [ ] **2.10** Push to Kaggle, run, download outputs
+- [x] **2.9** Create Kaggle push config `kaggle_push_09b/kernel-metadata.json`
+- [ ] **2.10** Pushed to Kaggle — waiting for completion
 - [ ] **2.11** Record results and p-values in `research.md`
 
-### Phase 3: Clean Held-Out Evaluation (Experiment C)
+### Phase 3: Clean Held-Out Evaluation (Experiment C) — RUNNING ON KAGGLE
 
-- [ ] **3.1** Create notebook `notebooks/09c_clean_holdout.ipynb`
-- [ ] **3.2** Load clean training data (post-dedup from Phase 1 or original if clean)
+- [x] **3.1** Create notebook `notebooks/09c_clean_holdout.ipynb`
+- [x] **3.2** Load clean training data (post-dedup from Phase 1 or original if clean)
 - [ ] **3.3** Train BERT-base + LoRA r=16 on clean data, evaluate on FPB
 - [ ] **3.4** Train ModernBERT-base + LoRA r=16 on clean data, evaluate on FPB
 - [ ] **3.5** Compare results to original NB01/NB05 numbers — confirm gap is not from contamination
-- [ ] **3.6** Create Kaggle push config `kaggle_push_09c/kernel-metadata.json`
-- [ ] **3.7** Push to Kaggle, run, download outputs
+- [x] **3.6** Create Kaggle push config `kaggle_push_09c/kernel-metadata.json`
+- [ ] **3.7** Pushed to Kaggle — waiting for completion
 - [ ] **3.8** Record results in `research.md`
 
-### Phase 4: Sample Efficiency Curves (Experiment D)
+### Phase 4: Sample Efficiency Curves (Experiment D) — QUEUED
 
-- [ ] **4.1** Create notebook `notebooks/09d_sample_efficiency.ipynb`
-- [ ] **4.2** Implement stratified subsampling at 6 sizes: 500, 1K, 2K, 4K, 8K, 13K
+- [x] **4.1** Create notebook `notebooks/09d_sample_efficiency.ipynb`
+- [x] **4.2** Implement stratified subsampling at 6 sizes: 500, 1K, 2K, 4K, 8K, 13K
 - [ ] **4.3** Train BERT-base + LoRA r=16 at each size x 3 seeds (18 runs)
 - [ ] **4.4** Train ModernBERT-base + LoRA r=16 at each size x 3 seeds (18 runs)
 - [ ] **4.5** Evaluate all 36 runs on FPB `sentences_50agree` and `sentences_allAgree`
 - [ ] **4.6** Plot scaling curves with error bars (log-x, accuracy-y)
 - [ ] **4.7** Print gap at each scale to determine if it converges, stays constant, or diverges
-- [ ] **4.8** Create Kaggle push config `kaggle_push_09d/kernel-metadata.json`
+- [x] **4.8** Create Kaggle push config `kaggle_push_09d/kernel-metadata.json`
 - [ ] **4.9** If runtime exceeds Kaggle limits: split into two notebooks (09d1: 500-2K, 09d2: 4K-13K)
-- [ ] **4.10** Push to Kaggle, run, download outputs
+- [ ] **4.10** Push to Kaggle after 09b/09c finish (max 2 concurrent GPU sessions)
 - [ ] **4.11** Record scaling analysis in `research.md`
 
-### Phase 5: Full Fine-Tuning (Experiment E)
+### Phase 5: Full Fine-Tuning (Experiment E) — QUEUED
 
-- [ ] **5.1** Create notebook `notebooks/09e_full_finetune.ipynb`
-- [ ] **5.2** Implement `full_finetune()` — no LoRA, all params trainable, lr=2e-5, weight_decay=0.01, fp16
-- [ ] **5.3** Add gradient_accumulation_steps=2 fallback if OOM at batch_size=16
+- [x] **5.1** Create notebook `notebooks/09e_full_finetune.ipynb`
+- [x] **5.2** Implement `full_finetune()` — no LoRA, all params trainable, lr=2e-5, weight_decay=0.01, fp16
+- [x] **5.3** Add gradient_accumulation_steps=2 fallback if OOM at batch_size=16
 - [ ] **5.4** Train BERT-base (110M params) on clean data, evaluate on FPB
 - [ ] **5.5** Train ModernBERT-base (149M params) on clean data, evaluate on FPB
 - [ ] **5.6** Build comparison table: LoRA r=16, LoRA r=48, Full FT for both models
-- [ ] **5.7** Create Kaggle push config `kaggle_push_09e/kernel-metadata.json`
-- [ ] **5.8** Push to Kaggle, run, download outputs
+- [x] **5.7** Create Kaggle push config `kaggle_push_09e/kernel-metadata.json`
+- [ ] **5.8** Push to Kaggle after 09b/09c finish (max 2 concurrent GPU sessions)
 - [ ] **5.9** Record results in `research.md`
 
 ### Phase 6: Analysis & Write-Up
