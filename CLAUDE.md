@@ -8,12 +8,13 @@ This is a research project for developing ModernFinBERT, a modernized financial 
 
 ## Project Status
 
-**Current State**: Active experimentation — three focused experiments comparing ModernBERT vs FinBERT baselines, measuring data augmentation impact, and benchmarking against Claude Opus 4.5.
+**Current State**: Active experimentation — seven controlled experiments covering held-out evaluation, data augmentation, LLM comparison, cross-validation, architecture comparison, multi-seed robustness, and self-training.
 
 **Key Results So Far**:
-- ModernFinBERT-base uploaded to HuggingFace (`neoyipeng/ModernFinBERT-base`): 90.47% on FPB (trained on aggregated minus FPB)
-- Cross-validation on FPB: 97.63% mean accuracy
-- Working Colab setup with Unsloth + ModernBERT-base (149M params)
+- ModernFinBERT-base uploaded to HuggingFace (`neoyipeng/ModernFinBERT-base`): 80.44% on FPB 50agree held-out, 86.88% 10-fold CV
+- ModernBERT outperforms BERT-base by +7.84pp on held-out, +1.09pp on CV
+- DataBoost augmentation: +2.9pp accuracy, +7.8pp F1 from 246 generated samples
+- Working Kaggle setup with ModernBERT-base (149M params) + LoRA
 
 **Key Objective**: Build and deploy a financial sentiment analysis model that outperforms existing FinBERT variants, with focus on:
 - Superior accuracy (>94% vs FinBERT's 93%)
