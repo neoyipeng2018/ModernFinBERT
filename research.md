@@ -503,9 +503,9 @@ Table 2 reports DataBoost results on the aggregated test set (same distribution 
 - 66% of test set is in-distribution for the fine-tuned model, not for Claude
 - Cost analysis ignores training/maintenance costs
 
-### 14.7 Training Data Was a Black Box
+### 14.7 Training Data Provenance ~~(Was a Black Box)~~
 
-All non-FPB labels are LLM-generated (prompt field: "Classify the sentiment of this [type]..."). Source 4 is 67% Canadian mining press releases. Source 8 (median 161 words) is silently truncated at 512 tokens. Class imbalance varies wildly by source (3.5% NEG for Source 4 vs 13.9% for Source 9). **Status: Being addressed via NB11 data provenance audit and new paper section.**
+**Status: ADDRESSED.** NB11 (`notebooks/11_data_provenance_audit.ipynb`) completed a full provenance audit. Paper Section 3.1 now includes Table 1 (data provenance) documenting all 4 training sources, their LLM-generated annotation method, class distributions, and text lengths. Three key findings are integrated into the paper: (1) all non-FPB labels are LLM-generated, (2) Source 4 is 68% Canadian mining press releases, (3) Source 8 samples are truncated at 512 tokens. New limitation items added to Section 6. The protocol gap discussion (Section 5.1) now connects the 10.2% vs 12.5% NEGATIVE class mismatch to the held-out performance drop.
 
 ### 14.8 Missing Experiments from Paper
 

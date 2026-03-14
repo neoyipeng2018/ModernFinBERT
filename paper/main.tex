@@ -36,7 +36,7 @@
 \maketitle
 
 \begin{abstract}
-We present a systematic empirical study applying ModernBERT, a recent modernized BERT architecture, to financial sentiment analysis. Through seven controlled experiments, we evaluate ModernBERT-base with LoRA fine-tuning across multiple evaluation protocols on the FinancialPhraseBank (FPB) benchmark. Our study makes several contributions: (1) we introduce a held-out evaluation protocol where FPB is entirely excluded from training, providing a stricter generalization test than standard in-domain splits; (2) we propose DataBoost, a targeted augmentation method that uses LLM-generated paraphrases of misclassified samples to improve performance; (3) we provide controlled comparisons between ModernBERT and BERT-base, finding that ModernBERT consistently outperforms BERT---leading by 1.09 percentage points in 10-fold CV ($p=0.093$) and by 7.84 points in the held-out setting on identical data; and (4) we compare fine-tuned models against zero-shot Claude Opus 4.5, demonstrating that even modest fine-tuned models are orders of magnitude more cost-effective. Our results highlight the importance of evaluation protocol choice and proper experimental controls in financial NLP.
+We present a systematic empirical study applying ModernBERT, a recent modernized BERT architecture, to financial sentiment analysis. Through seven controlled experiments, we evaluate ModernBERT-base with LoRA fine-tuning across multiple evaluation protocols on the FinancialPhraseBank (FPB) benchmark. Our study makes several contributions: (1) we introduce a held-out evaluation protocol where FPB is entirely excluded from training, providing a stricter generalization test than standard in-domain splits; (2) we propose DataBoost, a targeted augmentation method that uses LLM-generated paraphrases of misclassified samples to improve performance; (3) we provide controlled comparisons between ModernBERT and BERT-base, finding that ModernBERT consistently outperforms BERT---leading by 1.09 percentage points in 10-fold CV ($p=0.093$) and by 7.84 points in the held-out setting on identical data; (4) we compare fine-tuned models against Claude Opus 4.6 equipped with a purpose-built financial sentiment skill on the same 723-sample test set, finding that the 149M-parameter fine-tuned model outperforms the skill-prompted LLM by 10.4 percentage points while being 800$\times$ cheaper; and (5) we provide a training data provenance audit revealing that all non-FPB training labels are LLM-generated, 68\% of press release samples are from a single sub-domain (Canadian mining), and that the class distribution mismatch between training and evaluation data partially explains the held-out performance gap. Our results highlight the importance of evaluation protocol choice and proper experimental controls in financial NLP.
 \end{abstract}
 
 % ============================================================
@@ -89,7 +89,28 @@ Data augmentation has been widely used to improve NLP model robustness. Back-tra
 \subsection{Datasets}
 
 \paragraph{Training Data: Aggregated Financial Sentiment Corpus.}
-We use the \texttt{neoyipeng/financial\_reasoning\_aggregated} dataset from HuggingFace, which aggregates multiple financial sentiment datasets into a unified format. After filtering for the sentiment task, the dataset contains approximately 9,603 samples split into train (8,643), validation (480), and test (480) subsets. Labels are three-class: NEGATIVE (0), NEUTRAL (1), and POSITIVE (2). Crucially, we \emph{exclude} all FinancialPhraseBank samples (source ID 5) from training, reserving FPB as a held-out evaluation benchmark.
+We use the \texttt{neoyipeng/financial\_reasoning\_aggregated} dataset from HuggingFace, which aggregates financial text from four distinct domains. After filtering for the sentiment task and excluding all FinancialPhraseBank samples (source ID~5), the training set contains 8,643 samples. Labels are three-class: NEGATIVE (0), NEUTRAL (1), and POSITIVE (2). Table~\ref{tab:data-provenance} details the composition.
+
+\begin{table}[h]
+\centering
+\caption{Training data provenance. All non-FPB labels are LLM-generated via prompted classification; FPB labels are from human financial professionals.}
+\label{tab:data-provenance}
+\begin{tabular}{llrrrrl}
+\toprule
+\textbf{Src} & \textbf{Domain} & \textbf{N\textsubscript{train}} &
+\textbf{NEG\%} & \textbf{NEU\%} & \textbf{POS\%} & \textbf{Med.\ Words} \\
+\midrule
+3 & Earnings calls (narrative) & 462 & 11.3 & 53.4 & 35.3 & 32 \\
+4 & Press releases / news & 1,557 & 3.4 & 58.7 & 37.9 & 60 \\
+8 & Earnings calls (Q\&A) & 2,440 & 7.9 & 57.7 & 34.4 & 161 \\
+9 & Financial tweets & 4,184 & 13.9 & 68.4 & 17.6 & 15 \\
+\midrule
+\multicolumn{2}{l}{Total (excl.\ FPB)} & 8,643 & 10.2 & 62.7 & 27.1 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three characteristics of this corpus deserve attention. First, all non-FPB labels are \textbf{LLM-generated} via prompted classification (``Classify the sentiment of this [type]...''), not human-annotated. While this enables scalable dataset construction, it introduces potential LLM annotation artifacts---notably, Source~4 (press releases) has only 3.4\% NEGATIVE labels, substantially below the 12.5\% rate in human-annotated FPB, suggesting a positivity bias in the LLM labeler. Second, Source~4 is dominated by \textbf{Canadian mining press releases} (68\% of samples mention TSX, mining, or resource-extraction terms), making it a narrow sub-domain rather than a representative press release sample. Third, Source~8 (earnings call Q\&A) has a \textbf{median length of 161 words}, meaning a substantial fraction of these samples are truncated at the 512-token limit during training---the model learns from incomplete texts for this source.
 
 \paragraph{Evaluation Data: FinancialPhraseBank.}
 We evaluate on two FPB subsets:
@@ -188,28 +209,28 @@ DataBoost yields a 2.9 percentage point accuracy improvement and 7.8 point macro
 \paragraph{Protocol.}
 We evaluate Claude Opus 4.6 using a purpose-built \emph{financial sentiment engine} skill---a structured prompt encoding the three-label taxonomy, investor-lens definitions, text-length-dependent decision framework (direct classification for short text, label-first reasoning for medium text), and calibrated probability guidelines. Following \citet{vamvourellis2025overthinking}, the skill uses direct classification rather than chain-of-thought reasoning on short financial text, as reasoning causes ``overthinking'' that degrades performance on obvious sentiment signals. The evaluation is \textbf{blind}: four independent Claude Opus 4.6 agents each classify a chunk of the test set with access only to the text, not the ground truth labels.
 
-We evaluate on a diverse 723-sample financial sentiment test set spanning FinancialPhraseBank sentences, earnings call Q\&A transcripts, social media posts, press releases, and mining/resource announcements.
+We evaluate both models on the same 723-sample held-out test split from the aggregated financial sentiment corpus. This test set contains 243 FPB sentences (held out from training) and 480 samples from other financial sources---earnings call Q\&A transcripts, social media posts, press releases, and mining/resource announcements---from the same source distributions as the training data but never seen during training.
 
 \paragraph{Results.}
 Table~\ref{tab:claude} compares the fine-tuned ModernFinBERT against Claude Opus 4.6 with the financial sentiment skill.
 
 \begin{table}[h]
 \centering
-\caption{Fine-tuned ModernFinBERT vs.\ Claude Opus 4.6 with financial sentiment skill. ModernFinBERT evaluated on FPB sentences\_50agree; Claude evaluated on a diverse 723-sample financial test set including FPB sentences.}
+\caption{Fine-tuned ModernFinBERT vs.\ Claude Opus 4.6 with financial sentiment skill. Both models evaluated on the same 723-sample held-out test set from the aggregated corpus (243 FPB + 480 non-FPB).}
 \label{tab:claude}
 \begin{tabular}{lccrr}
 \toprule
 \textbf{Model} & \textbf{Accuracy} & \textbf{Macro F1} & \textbf{Cost/sample} & \textbf{Latency/sample} \\
 \midrule
-ModernFinBERT (149M) & 0.8044 & 0.7705 & $\sim$\$0.00001 & $\sim$2ms \\
-Claude Opus 4.6 + skill & 0.7280 & 0.7030 & $\sim$\$0.008 & $\sim$1--2s \\
+ModernFinBERT (149M) & 0.8313 & 0.7957 & $\sim$\$0.00001 & $\sim$2ms \\
+Claude Opus 4.6 + skill & 0.7275 & 0.7033 & $\sim$\$0.008 & $\sim$1--2s \\
 \midrule
 \multicolumn{2}{l}{Fine-tuned advantage} & & 800$\times$ cheaper & 500--1000$\times$ faster \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Claude Opus 4.6 with the financial sentiment skill achieves 72.8\% accuracy and 0.703 macro F1---a substantial improvement over na\"ive zero-shot prompting but still 7.6 percentage points below the fine-tuned ModernFinBERT. Per-class analysis reveals that the POSITIVE $\leftrightarrow$ NEUTRAL boundary is the dominant confusion source (131 of 197 errors), while NEGATIVE recall is strongest at 0.819. Despite deploying a carefully engineered prompt with domain-specific classification rules, the fine-tuned 149M-parameter model remains approximately 800$\times$ cheaper and 500--1000$\times$ faster per inference, underscoring the continued value of task-specific fine-tuning for high-volume financial applications.
+On the same 723-sample test set, ModernFinBERT achieves 83.13\% accuracy and 0.796 macro F1, outperforming Claude Opus 4.6 with the financial sentiment skill (72.75\% accuracy, 0.703 macro F1) by 10.4 percentage points. The advantage holds across both data subsets: ModernFinBERT leads by 4.9 points on the 243 held-out FPB sentences and by 13.0 points on the 478 non-FPB samples spanning social media, earnings calls, and press releases. Despite deploying a carefully engineered prompt with domain-specific classification rules, the fine-tuned 149M-parameter model remains approximately 800$\times$ cheaper and 500--1000$\times$ faster per inference, underscoring the continued value of task-specific fine-tuning for high-volume financial applications.
 
 \subsection{Experiment 4: In-Domain Cross-Validation}
 \label{sec:kfold}
@@ -391,7 +412,7 @@ Our experiments reveal a fundamental tension in financial sentiment evaluation. 
     \item \textbf{Held-out evaluation}: 80.44\% accuracy (FPB excluded from training)
 \end{itemize}
 
-This 6.4 percentage point ``protocol gap'' arises because in-domain CV allows the model to train on FPB-distributed data, while the held-out setting tests true generalization. We argue that reporting both protocols is essential for honest evaluation, and that the held-out number better reflects real-world deployment performance where the model encounters novel financial text.
+This 6.4 percentage point ``protocol gap'' arises because in-domain CV allows the model to train on FPB-distributed data, while the held-out setting tests true generalization. Our data provenance audit (Table~\ref{tab:data-provenance}) reveals a contributing factor: the training data has a NEGATIVE class rate of 10.2\%, below FPB's 12.5\%, creating a distribution shift that partially explains the held-out performance drop. We argue that reporting both protocols is essential for honest evaluation, and that the held-out number better reflects real-world deployment performance where the model encounters novel financial text.
 
 \subsection{Architecture Comparison: ModernBERT vs.\ BERT}
 
@@ -409,13 +430,13 @@ The held-out advantage (+7.84 points) suggests that ModernBERT's modernized arch
 The comparison with Claude Opus 4.6 (Section~\ref{sec:claude}) demonstrates that task-specific fine-tuning remains strongly preferable for production financial sentiment analysis, even when the LLM is equipped with a purpose-built financial sentiment skill:
 
 \begin{itemize}[nosep]
-    \item \textbf{Accuracy}: ModernFinBERT (80.44\%) outperforms Claude Opus 4.6 with a carefully engineered financial sentiment skill (72.8\%) by 7.6 percentage points.
+    \item \textbf{Accuracy}: On the same 723-sample held-out test set, ModernFinBERT (83.13\%) outperforms Claude Opus 4.6 with a carefully engineered financial sentiment skill (72.75\%) by 10.4 percentage points.
     \item \textbf{Cost}: Fine-tuned inference costs $\sim$800$\times$ less per sample.
     \item \textbf{Latency}: Fine-tuned models are 500--1000$\times$ faster, enabling real-time processing.
     \item \textbf{Consistency}: Fine-tuned models produce deterministic outputs; LLM outputs vary across runs.
 \end{itemize}
 
-Notably, the Claude evaluation used a structured skill with domain-specific classification rules, investor-lens label definitions, and direct classification (avoiding chain-of-thought overthinking per \citealt{vamvourellis2025overthinking})---not a na\"ive zero-shot prompt. This represents a strong-effort LLM baseline. The persistent accuracy gap suggests that fine-tuning provides pattern recognition at decision boundaries that prompt engineering alone cannot replicate. LLMs remain valuable for financial analysis tasks requiring reasoning, explanation, or handling novel formats, but for high-volume three-class sentiment classification, fine-tuning remains the pragmatic choice.
+The advantage is robust across data subsets: ModernFinBERT leads by 4.9 points on the 243 held-out FPB sentences and by 13.0 points on the 478 non-FPB samples. Notably, the Claude evaluation used a structured skill with domain-specific classification rules, investor-lens label definitions, and direct classification (avoiding chain-of-thought overthinking per \citealt{vamvourellis2025overthinking})---not a na\"ive zero-shot prompt. This represents a strong-effort LLM baseline. The persistent accuracy gap suggests that fine-tuning provides pattern recognition at decision boundaries that prompt engineering alone cannot replicate. LLMs remain valuable for financial analysis tasks requiring reasoning, explanation, or handling novel formats, but for high-volume three-class sentiment classification, fine-tuning remains the pragmatic choice.
 
 \subsection{DataBoost: Targeted Augmentation with Verbalized Sampling}
 
@@ -429,7 +450,7 @@ The disproportionate F1 improvement (7.8 points) relative to accuracy improvemen
 
 The negative self-training result (Section~\ref{sec:self-training}) provides a useful cautionary finding. Despite careful anti-confirmation-bias measures---per-class selection, fresh student initialization, and early stopping---adding 3,217 pseudo-labeled tweets degraded performance across all metrics.
 
-Two factors likely contribute. First, the \textbf{domain mismatch}: Twitter financial text is informal, abbreviated, and opinionated, while FPB consists of formal press-release sentences. Pseudo-labels from tweets may teach the model stylistic patterns that are counterproductive for formal text classification. Second, the \textbf{overconfident teacher}: with mean and minimum confidence both near 1.0, the selected pseudo-labels carried no meaningful uncertainty signal, effectively amplifying the teacher's existing biases rather than adding complementary information.
+Two factors likely contribute. First, the \textbf{domain mismatch}: Twitter financial text is informal, abbreviated, and opinionated, while FPB consists of formal press-release sentences. Our data provenance audit (Table~\ref{tab:data-provenance}) confirms this gap---the training data already derives 48\% of samples from tweets (Source~9, median 15 words) and earnings calls (Source~8, median 161 words), domains that differ substantially from FPB's press-release headlines (median 21 words). Adding more tweets via pseudo-labeling amplifies this mismatch. Second, the \textbf{overconfident teacher}: with mean and minimum confidence both near 1.0, the selected pseudo-labels carried no meaningful uncertainty signal, effectively amplifying the teacher's existing biases rather than adding complementary information.
 
 This suggests that for self-training to succeed in financial NLP, practitioners should prioritize domain-matched unlabeled data and consider calibration techniques to ensure meaningful confidence differentiation.
 
@@ -443,7 +464,9 @@ This suggests that for self-training to succeed in financial NLP, practitioners 
     \item \textbf{Base models only}: We evaluate only base-sized models (110--149M parameters). Results may differ with large variants.
     \item \textbf{English only}: All experiments use English financial text. Financial NLP in other languages remains unexplored.
     \item \textbf{LoRA only}: Full fine-tuning could yield different relative performance between architectures. ModernBERT's fused QKV projections receive effectively lower per-component LoRA rank than BERT's separate projections, and full fine-tuning would eliminate this asymmetry.
-    \item \textbf{Training data composition}: The aggregated training corpus combines heterogeneous sources. The interaction between source diversity and model architecture deserves further study.
+    \item \textbf{LLM-annotated training data}: All non-FPB training labels are LLM-generated, not human-annotated. This introduces potential systematic biases---for instance, the LLM labeler assigns NEGATIVE labels to only 3.4\% of press releases (Source~4), compared to 12.5\% in human-annotated FPB. The impact of LLM label noise on downstream model quality deserves further study.
+    \item \textbf{Narrow sub-domain in training data}: Source~4 (press releases) is 68\% Canadian mining announcements (TSX-V listings, drill results, assay values), making it a narrow sub-domain rather than representative financial press releases. This may inflate apparent generalization to mining text while limiting transfer to other press release types.
+    \item \textbf{Training data composition}: The aggregated training corpus combines heterogeneous sources with text lengths spanning 15 to 161 median words. The interaction between source diversity and model architecture deserves further study.
     \item \textbf{Single training data size}: The controlled BERT vs.\ ModernBERT comparison uses only 8,643 training samples. A sample efficiency study across multiple dataset sizes would reveal how the architectural advantage changes with data scale.
     \item \textbf{Self-training data}: The unlabeled pool consisted solely of financial tweets, which differ stylistically from FPB's press-release sentences. Self-training with domain-matched unlabeled data (e.g., financial news headlines) may yield different results.
 \end{itemize}
@@ -459,7 +482,7 @@ We have presented a systematic study of ModernBERT for financial sentiment analy
     \item \textbf{Evaluation protocol matters}: The 6.4-point gap between in-domain CV and held-out evaluation highlights the need for standardized, rigorous evaluation in financial NLP.
     \item \textbf{ModernBERT outperforms BERT}: Controlled experiments on verified-clean data show ModernBERT consistently outperforms BERT-base, by +7.84 points in the held-out setting and +1.09 points in cross-validation.
     \item \textbf{DataBoost works}: Targeted LLM augmentation of misclassified examples yields efficient improvements, particularly for minority classes.
-    \item \textbf{Fine-tuning beats skill-prompted LLMs}: Even modest fine-tuned models outperform state-of-the-art LLMs equipped with purpose-built classification skills on structured sentiment tasks, while being orders of magnitude cheaper and faster.
+    \item \textbf{Fine-tuning beats skill-prompted LLMs}: On the same 723-sample test set, ModernFinBERT outperforms Claude Opus 4.6 with a purpose-built financial sentiment skill by 10.4 percentage points, while being 800$\times$ cheaper and 500--1000$\times$ faster.
     \item \textbf{Self-training requires domain match}: Iterative pseudo-labeling on out-of-domain tweets did not improve performance, highlighting the importance of domain-matched unlabeled data for semi-supervised methods.
 \end{enumerate}
 

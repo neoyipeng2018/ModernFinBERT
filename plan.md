@@ -497,94 +497,94 @@ contribution in Section 2 (Strengths).
 
 ### Phase 1: Notebook — Data Loading & Source Identification
 
-- [ ] **1.1** Create `notebooks/11_data_provenance_audit.ipynb` with setup cell (imports, dataset load, build unified DataFrame across all splits)
-- [ ] **1.2** Add source identification cell: map source IDs to domain names using prompt field patterns (`"Classify the sentiment of this earnings call transcript"` → earnings call, `"this tweet"` → tweet, etc.)
-- [ ] **1.3** Verify domain mapping by checking text-level patterns: Source 8 should have 100% `Question:/Answer:`, Source 9 should have high URL/ticker rates, Source 4 should have press release language
-- [ ] **1.4** Print 3 representative examples per source for manual verification
+- [x] **1.1** Create `notebooks/11_data_provenance_audit.ipynb` with setup cell (imports, dataset load, build unified DataFrame across all splits)
+- [x] **1.2** Add source identification cell: map source IDs to domain names using prompt field patterns (`"Classify the sentiment of this earnings call transcript"` → earnings call, `"this tweet"` → tweet, etc.)
+- [x] **1.3** Verify domain mapping by checking text-level patterns: Source 8 should have 100% `Question:/Answer:`, Source 9 should have high URL/ticker rates, Source 4 should have press release language
+- [x] **1.4** Print 3 representative examples per source for manual verification
 
 ### Phase 2: Notebook — Annotation Method Audit
 
-- [ ] **2.1** Analyze the `prompt` field across all sources to confirm LLM-generated labels for sources 3, 4, 8, 9
-- [ ] **2.2** Check whether prompts use chain-of-thought (`"Reason step by step"`) — this affects expected label quality
-- [ ] **2.3** Document that Source 5 (FPB) uses human annotation from 16-24 finance professionals
-- [ ] **2.4** Flag the key implication: model is trained on LLM labels but evaluated against human labels (knowledge distillation framing)
+- [x] **2.1** Analyze the `prompt` field across all sources to confirm LLM-generated labels for sources 3, 4, 8, 9
+- [x] **2.2** Check whether prompts use chain-of-thought (`"Reason step by step"`) — this affects expected label quality
+- [x] **2.3** Document that Source 5 (FPB) uses human annotation from 16-24 finance professionals
+- [x] **2.4** Flag the key implication: model is trained on LLM labels but evaluated against human labels (knowledge distillation framing)
 
 ### Phase 3: Notebook — Provenance Table & Statistics
 
-- [ ] **3.1** Build the main provenance table with columns: Source ID, Domain, N (total), N (train), Annotation Method, NEG%, NEU%, POS%, Median Words
-- [ ] **3.2** Estimate time period per source from year mentions in text (regex `\b20[12][0-9]\b`)
-- [ ] **3.3** Generate LaTeX version of the table for direct paper inclusion
-- [ ] **3.4** Compute and report class balance for training set (excl FPB): overall NEG/NEU/POS split
-- [ ] **3.5** Compare training data class distribution against FPB distribution (10.2% vs 12.5% NEGATIVE, etc.)
+- [x] **3.1** Build the main provenance table with columns: Source ID, Domain, N (total), N (train), Annotation Method, NEG%, NEU%, POS%, Median Words
+- [x] **3.2** Estimate time period per source from year mentions in text (regex `\b20[12][0-9]\b`)
+- [x] **3.3** Generate LaTeX version of the table for direct paper inclusion
+- [x] **3.4** Compute and report class balance for training set (excl FPB): overall NEG/NEU/POS split
+- [x] **3.5** Compare training data class distribution against FPB distribution (10.2% vs 12.5% NEGATIVE, etc.)
 
 ### Phase 4: Notebook — Deep-Dive Analyses
 
-- [ ] **4.1** Source 4 sub-domain analysis: classify samples as mining vs non-mining using keyword regex (`TSX|hectare|drill|assay|mining|gold|copper|zinc|mineral|ore|exploration|deposit`)
-- [ ] **4.2** Report mining vs non-mining label distributions within Source 4 (expect very different NEG% rates)
-- [ ] **4.3** Source 8 truncation analysis: tokenize all Source 8 texts with ModernBERT tokenizer (no truncation), report how many exceed 512 and 256 tokens
-- [ ] **4.4** LLM annotation bias analysis: compare per-source label distributions against FPB (human baseline) — compute delta per class per source
-- [ ] **4.5** Check for intra-source duplicates (we already know Source 5 has 8 duplicated texts; verify others are clean)
-- [ ] **4.6** Check for cross-source duplicates (already confirmed zero; re-verify in notebook for reproducibility)
+- [x] **4.1** Source 4 sub-domain analysis: classify samples as mining vs non-mining using keyword regex (`TSX|hectare|drill|assay|mining|gold|copper|zinc|mineral|ore|exploration|deposit`)
+- [x] **4.2** Report mining vs non-mining label distributions within Source 4 (expect very different NEG% rates)
+- [x] **4.3** Source 8 truncation analysis: tokenize all Source 8 texts with ModernBERT tokenizer (no truncation), report how many exceed 512 and 256 tokens
+- [x] **4.4** LLM annotation bias analysis: compare per-source label distributions against FPB (human baseline) — compute delta per class per source
+- [x] **4.5** Check for intra-source duplicates (we already know Source 5 has 8 duplicated texts; verify others are clean)
+- [x] **4.6** Check for cross-source duplicates (already confirmed zero; re-verify in notebook for reproducibility)
 
 ### Phase 5: Notebook — Figures
 
-- [ ] **5.1** Figure 1 panel (a): box plot of word count by source, ordered short→long (9, 5, 3, 4, 8), with outliers suppressed
-- [ ] **5.2** Figure 1 panel (b): stacked bar chart of label distribution by source (NEG/NEU/POS as colors)
-- [ ] **5.3** Figure 2: Source 8 token length histogram with 512-token limit vertical line
-- [ ] **5.4** Save all figures to `results/` at 150 DPI
-- [ ] **5.5** Verify figures render cleanly at paper column width (~3.5 inches for single-column)
+- [x] **5.1** Figure 1 panel (a): box plot of word count by source, ordered short→long (9, 5, 3, 4, 8), with outliers suppressed
+- [x] **5.2** Figure 1 panel (b): stacked bar chart of label distribution by source (NEG/NEU/POS as colors)
+- [x] **5.3** Figure 2: Source 8 token length histogram with 512-token limit vertical line
+- [x] **5.4** Save all figures to `results/` at 150 DPI
+- [x] **5.5** Verify figures render cleanly at paper column width (~3.5 inches for single-column)
 
 ### Phase 6: Notebook — Per-Source Model Performance
 
-- [ ] **6.1** Load `neoyipeng/ModernFinBERT-base` and run inference on the test split (all sources)
-- [ ] **6.2** Report accuracy per source on the test set (connects training data composition to model behavior)
-- [ ] **6.3** Cross-reference with `fair_comparison_results.json` per-text-type breakdown (Earnings Calls 69.12%, Mining/TSX-V 88.57%, Social Media 87.36%, Press Release 88.00%)
-- [ ] **6.4** Write narrative connecting Source 4 mining dominance → high Mining/TSX-V accuracy; Source 8 truncation → low Earnings Call accuracy
-- [ ] **6.5** If no GPU available, use cached results and note this in the notebook
+- [x] **6.1** Load `neoyipeng/ModernFinBERT-base` and run inference on the test split (all sources)
+- [x] **6.2** Report accuracy per source on the test set (connects training data composition to model behavior)
+- [x] **6.3** Cross-reference with `fair_comparison_results.json` per-text-type breakdown (Earnings Calls 69.12%, Mining/TSX-V 88.57%, Social Media 87.36%, Press Release 88.00%)
+- [x] **6.4** Write narrative connecting Source 4 mining dominance → high Mining/TSX-V accuracy; Source 8 truncation → low Earnings Call accuracy
+- [x] **6.5** If no GPU available, use cached results and note this in the notebook
 
 ### Phase 7: Notebook — Export & Summary
 
-- [ ] **7.1** Export `results/data_provenance_audit.json` with all statistics in machine-readable format
-- [ ] **7.2** Write summary cell with key findings (LLM labels, mining dominance, truncation, class imbalance) as a numbered list
-- [ ] **7.3** Run full notebook end-to-end and verify all cells execute without error
-- [ ] **7.4** Check that all `results/` outputs are created (PNG figures, JSON audit file)
+- [x] **7.1** Export `results/data_provenance_audit.json` with all statistics in machine-readable format
+- [x] **7.2** Write summary cell with key findings (LLM labels, mining dominance, truncation, class imbalance) as a numbered list
+- [x] **7.3** Run full notebook end-to-end and verify all cells execute without error
+- [x] **7.4** Check that all `results/` outputs are created (PNG figures, JSON audit file)
 
 ### Phase 8: Paper — Section 3.1 Rewrite
 
-- [ ] **8.1** Replace the current vague "Training Data" paragraph in `paper/main.tex` Section 3.1 with the new provenance paragraph + Table `\ref{tab:data-provenance}`
-- [ ] **8.2** Add `tab:data-provenance` table (LaTeX from Cell 4) with 4 training sources + total row
-- [ ] **8.3** Add the three-point discussion paragraph (LLM labels, mining dominance, truncation)
-- [ ] **8.4** Verify the table compiles in LaTeX without errors (column alignment, special characters)
-- [ ] **8.5** Update the sample count if it changed (paper currently says "approximately 9,603" — correct to 8,643 for training excl FPB)
+- [x] **8.1** Replace the current vague "Training Data" paragraph in `paper/main.tex` Section 3.1 with the new provenance paragraph + Table `\ref{tab:data-provenance}`
+- [x] **8.2** Add `tab:data-provenance` table (LaTeX from Cell 4) with 4 training sources + total row
+- [x] **8.3** Add the three-point discussion paragraph (LLM labels, mining dominance, truncation)
+- [x] **8.4** Verify the table compiles in LaTeX without errors (column alignment, special characters)
+- [x] **8.5** Update the sample count if it changed (paper currently says "approximately 9,603" — correct to 8,643 for training excl FPB)
 
 ### Phase 9: Paper — Limitations Update
 
-- [ ] **9.1** Add new limitation item about LLM-annotated training data to Section 6
-- [ ] **9.2** Add new limitation item about Source 4 narrow sub-domain (Canadian mining)
-- [ ] **9.3** Consider adding truncation note to existing "Training data composition" limitation
-- [ ] **9.4** Review whether the LLM annotation finding warrants a sentence in the Abstract or Conclusion
+- [x] **9.1** Add new limitation item about LLM-annotated training data to Section 6
+- [x] **9.2** Add new limitation item about Source 4 narrow sub-domain (Canadian mining)
+- [x] **9.3** Consider adding truncation note to existing "Training data composition" limitation
+- [x] **9.4** Review whether the LLM annotation finding warrants a sentence in the Abstract or Conclusion
 
 ### Phase 10: Paper — Discussion & Narrative Integration
 
-- [ ] **10.1** In Section 5 (Analysis and Discussion), add a paragraph connecting training data composition to the "protocol gap" — the class distribution mismatch (10.2% NEG in training vs 12.5% in FPB) partially explains the held-out performance drop
-- [ ] **10.2** In the self-training discussion (Section 5.5), connect the domain mismatch finding to the data provenance — Source 8/9 (tweets and earnings calls) differ from FPB (press-release headlines), same as the unlabeled tweet pool
-- [ ] **10.3** In the Claude comparison discussion (Section 5.3), note that the per-text-type breakdown (now documented) shows ModernFinBERT's advantage is largest on in-distribution text types (mining, social media) and smallest on FPB
-- [ ] **10.4** Decide whether to add "data provenance audit" as a listed contribution in the Introduction or Abstract
+- [x] **10.1** In Section 5 (Analysis and Discussion), add a paragraph connecting training data composition to the "protocol gap" — the class distribution mismatch (10.2% NEG in training vs 12.5% in FPB) partially explains the held-out performance drop
+- [x] **10.2** In the self-training discussion (Section 5.5), connect the domain mismatch finding to the data provenance — Source 8/9 (tweets and earnings calls) differ from FPB (press-release headlines), same as the unlabeled tweet pool
+- [x] **10.3** In the Claude comparison discussion (Section 5.3), note that the per-text-type breakdown (now documented) shows ModernFinBERT's advantage is largest on in-distribution text types (mining, social media) and smallest on FPB
+- [x] **10.4** Decide whether to add "data provenance audit" as a listed contribution in the Introduction or Abstract
 
 ### Phase 11: research.md Update
 
-- [ ] **11.1** Update Section 3.7 ("Training Data Is a Black Box") in `research.md` to note it's been addressed
-- [ ] **11.2** Add "Data provenance audit" as a new item in Section 2 (Strengths)
-- [ ] **11.3** Cross-reference the new findings against other weaknesses (e.g., does the LLM-label finding compound the "protocol gap" concern in Section 3.4?)
+- [x] **11.1** Update Section 3.7 ("Training Data Is a Black Box") in `research.md` to note it's been addressed
+- [x] **11.2** Add "Data provenance audit" as a new item in Section 2 (Strengths)
+- [x] **11.3** Cross-reference the new findings against other weaknesses (e.g., does the LLM-label finding compound the "protocol gap" concern in Section 3.4?)
 
 ### Phase 12: Compile & Verify
 
-- [ ] **12.1** Rebuild paper PDF (`pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex`)
-- [ ] **12.2** Check the new table renders correctly (no overflows, alignment is clean)
-- [ ] **12.3** Check figure references if any figures from the notebook are included in the paper
-- [ ] **12.4** Proofread the new paragraphs in context — do they flow with the existing text?
-- [ ] **12.5** Verify the Abstract still accurately describes the paper's contributions after additions
-- [ ] **12.6** Final read-through of Sections 3.1, 5, and 6 for consistency
+- [x] **12.1** Rebuild paper PDF (`pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex`)
+- [x] **12.2** Check the new table renders correctly (no overflows, alignment is clean)
+- [x] **12.3** Check figure references if any figures from the notebook are included in the paper
+- [x] **12.4** Proofread the new paragraphs in context — do they flow with the existing text?
+- [x] **12.5** Verify the Abstract still accurately describes the paper's contributions after additions
+- [x] **12.6** Final read-through of Sections 3.1, 5, and 6 for consistency
 
 ---
 

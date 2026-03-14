@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.10)  13 MAR 2026 02:37
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.10)  14 MAR 2026 19:17
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -484,60 +484,70 @@ LaTeX Font Info:    Trying to load font information for U+msb on input line 37.
 
 (/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsb.fd
 File: umsb.fd 2013/01/14 v3.01 AMS symbols B
-)
+) [1
+
+{/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
 Overfull \hbox (2.24881pt too wide) in paragraph at lines 58--59
 []\T1/cmr/bx/n/10.95 Architecture and base-line com-par-i-son \T1/cmr/m/n/10.95
  (NB05/NB09): Com-pare Mod-ern-Fin-BERT against
  []
 
-[1
-
-{/usr/local/texlive/2026basic/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
+[2]
 Overfull \hbox (122.71909pt too wide) in paragraph at lines 92--93
  []\T1/cmr/bx/n/10.95 Training Data: Ag-gre-gated Fi-nan-cial Sen-ti-ment Cor-p
 us.[] \T1/cmr/m/n/10.95 We use the \T1/cmtt/m/n/10.95 neoyipeng/financial_reaso
 ning_aggregated
  []
 
-[2] [3]
-Overfull \hbox (7.06337pt too wide) in paragraph at lines 189--190
+[3] [4]
+Overfull \hbox (7.06337pt too wide) in paragraph at lines 210--211
 \T1/cmr/m/n/10.95 struc-tured prompt en-cod-ing the three-label tax-on-omy, inv
 estor-lens def-i-ni-tions, text-length-dependent
- []
-
-[4]
-Overfull \hbox (70.00093pt too wide) in paragraph at lines 227--245
- [][] 
  []
 
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[5] [6]
-Overfull \hbox (9.65868pt too wide) in paragraph at lines 345--346
+[5]
+Overfull \hbox (70.00093pt too wide) in paragraph at lines 248--266
+ [][] 
+ []
+
+[6]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[7]
+Overfull \hbox (9.65868pt too wide) in paragraph at lines 366--367
 []\T1/cmr/m/n/10.95 Source ap-prox-i-mately 50,000 un-la-beled fi-nan-cial sen-
 tences from Twit-ter Fi-nan-cial News datasets,
  []
 
-[7] [8]
-Overfull \hbox (0.96176pt too wide) in paragraph at lines 405--406
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[8]
+Overfull \hbox (0.96176pt too wide) in paragraph at lines 426--427
 \T1/cmr/m/n/10.95 rotary po-si-tional em-bed-dings, Flash At-ten-tion, and GeGL
 U activations---provides gen-uinely stronger
  []
 
 [9]
-Overfull \hbox (6.47029pt too wide) in paragraph at lines 430--431
+Overfull \hbox (6.47029pt too wide) in paragraph at lines 451--452
 \T1/cmr/m/n/10.95 anti-confirmation-bias measures---per-class se-lec-tion, fres
 h stu-dent ini-tial-iza-tion, and early stopping---
  []
 
-
-Overfull \hbox (6.18169pt too wide) in paragraph at lines 446--447
+[10]
+Overfull \hbox (3.1556pt too wide) in paragraph at lines 469--470
 []\T1/cmr/bx/n/10.95 Training data com-po-si-tion\T1/cmr/m/n/10.95 : The ag-gre
--gated train-ing cor-pus com-bines het-ero-ge-neous sources.
+-gated train-ing cor-pus com-bines het-ero-ge-neous sources
  []
 
-[10] (./main.bbl [11]) [12] (./main.aux)
+[11] (./main.bbl [12]) [13] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
@@ -546,16 +556,16 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: 81ECD9A4976F2B1D5CC235791B418A89;4545.
  ) 
 Here is how much of TeX's memory you used:
- 13313 strings out of 469006
- 206390 string characters out of 5454813
- 635046 words of memory out of 5000000
- 41742 multiletter control sequences out of 15000+600000
+ 13316 strings out of 469006
+ 206434 string characters out of 5454813
+ 634196 words of memory out of 5000000
+ 41743 multiletter control sequences out of 15000+600000
  644988 words of font info for 86 fonts, out of 8000000 for 9000
  319 hyphenation exceptions out of 8191
- 75i,12n,79p,1239b,583s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,12n,79p,1681b,582s stack positions out of 10000i,1000n,20000p,200000b,200000s
  </Users/boo/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/
-ecbx0800.600pk> </Users/boo/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour
-/jknappen/ec/tcrm1095.600pk> </Users/boo/Library/texlive/2026basic/texmf-var/fo
+tcrm1095.600pk> </Users/boo/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour
+/jknappen/ec/ecbx0800.600pk> </Users/boo/Library/texlive/2026basic/texmf-var/fo
 nts/pk/ljfour/jknappen/ec/ectt1095.600pk> </Users/boo/Library/texlive/2026basic
 /texmf-var/fonts/pk/ljfour/jknappen/ec/ecbx1200.600pk> </Users/boo/Library/texl
 ive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/ecti1095.600pk> </Users/boo
@@ -575,10 +585,10 @@ sfonts/cm/cmr10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public
 ic/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/
 public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/typ
 e1/public/amsfonts/cm/cmsy8.pfb>
-Output written on main.pdf (12 pages, 227659 bytes).
+Output written on main.pdf (13 pages, 234900 bytes).
 PDF statistics:
- 826 PDF objects out of 1000 (max. 8388607)
- 353 compressed objects within 4 object streams
- 105 named destinations out of 1000 (max. 500000)
+ 846 PDF objects out of 1000 (max. 8388607)
+ 361 compressed objects within 4 object streams
+ 107 named destinations out of 1000 (max. 500000)
  177 words of extra memory for PDF output out of 10000 (max. 10000000)
 

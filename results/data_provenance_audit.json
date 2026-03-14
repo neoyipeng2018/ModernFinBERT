@@ -1,0 +1,88 @@
+{
+  "dataset": "neoyipeng/financial_reasoning_aggregated",
+  "total_sentiment_samples": 14449,
+  "training_samples_excl_fpb": 8643,
+  "source_4_mining_pct": 0.68,
+  "sources": {
+    "3": {
+      "name": "Earnings Calls (Narrative)",
+      "n_total": 513,
+      "n_train": 462,
+      "annotation_method": "llm",
+      "label_distribution": {
+        "NEGATIVE": 0.113,
+        "NEUTRAL/MIXED": 0.534,
+        "POSITIVE": 0.353
+      },
+      "text_length": {
+        "median_words": 32,
+        "mean_words": 53.6,
+        "max_words": 260
+      }
+    },
+    "4": {
+      "name": "Press Releases & News",
+      "n_total": 1730,
+      "n_train": 1557,
+      "annotation_method": "llm",
+      "label_distribution": {
+        "NEGATIVE": 0.034,
+        "NEUTRAL/MIXED": 0.587,
+        "POSITIVE": 0.379
+      },
+      "text_length": {
+        "median_words": 60,
+        "mean_words": 65.9,
+        "max_words": 399
+      }
+    },
+    "5": {
+      "name": "FinancialPhraseBank",
+      "n_total": 4846,
+      "n_train": 4361,
+      "annotation_method": "human",
+      "label_distribution": {
+        "NEGATIVE": 0.125,
+        "NEUTRAL/MIXED": 0.594,
+        "POSITIVE": 0.281
+      },
+      "text_length": {
+        "median_words": 21,
+        "mean_words": 23.1,
+        "max_words": 81
+      }
+    },
+    "8": {
+      "name": "Earnings Calls (Q&A)",
+      "n_total": 2711,
+      "n_train": 2440,
+      "annotation_method": "llm",
+      "label_distribution": {
+        "NEGATIVE": 0.079,
+        "NEUTRAL/MIXED": 0.577,
+        "POSITIVE": 0.344
+      },
+      "text_length": {
+        "median_words": 161,
+        "mean_words": 189.3,
+        "max_words": 2596
+      }
+    },
+    "9": {
+      "name": "Financial Tweets",
+      "n_total": 4649,
+      "n_train": 4184,
+      "annotation_method": "llm",
+      "label_distribution": {
+        "NEGATIVE": 0.139,
+        "NEUTRAL/MIXED": 0.684,
+        "POSITIVE": 0.176
+      },
+      "text_length": {
+        "median_words": 15,
+        "mean_words": 15.7,
+        "max_words": 32
+      }
+    }
+  }
+}
