@@ -1,13 +1,13 @@
 {
-  "id": "neoyipeng2018/modernfinbert-09d-sample-efficiency",
-  "title": "ModernFinBERT 09D Sample Efficiency",
+  "id": "neoyipeng2018/modernfinbert-09d-efficiency",
+  "title": "ModernFinBERT 09D Efficiency",
   "code_file": "09d_sample_efficiency.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "keywords": ["modernbert", "bert", "financial-sentiment", "sample-efficiency", "nlp"],
+  "keywords": [],
   "dataset_sources": [],
   "kernel_sources": [],
   "competition_sources": []

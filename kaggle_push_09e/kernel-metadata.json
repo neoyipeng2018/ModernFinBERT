@@ -1,13 +1,13 @@
 {
-  "id": "neoyipeng2018/modernfinbert-09e-full-finetune",
-  "title": "ModernFinBERT 09E Full Finetune",
+  "id": "neoyipeng2018/modernfinbert-09e-fullft",
+  "title": "ModernFinBERT 09E Fullft",
   "code_file": "09e_full_finetune.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
-  "keywords": ["modernbert", "bert", "financial-sentiment", "full-finetune", "nlp"],
+  "keywords": [],
   "dataset_sources": [],
   "kernel_sources": [],
   "competition_sources": []

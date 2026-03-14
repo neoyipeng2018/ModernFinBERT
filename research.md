@@ -469,3 +469,52 @@ The DataBoost augmentation uses Verbalized Sampling (Zhang et al., 2025), specif
 4. **Tail sampling**: Select diverse candidates, not just the most probable
 
 This approach yields 1.6-2.1x more diversity than standard paraphrasing and avoids mode collapse. The 410 generated samples (targeting 82 errors × 5 paraphrases) improved macro F1 by 7.8pp — a remarkably efficient use of synthetic data.
+
+---
+
+## 14. Critical Assessment — Blindspots, Flaws & Weaknesses
+
+*Added 2026-03-14 after deep paper review.*
+
+### 14.1 The Uploaded Model vs. Experimental Models Are Different
+
+The uploaded HuggingFace model (`neoyipeng/ModernFinBERT-base`) achieves **97.13%** on FPB 50agree (per `results/nb10_parts_ab.json`), while the held-out experimental model achieves **80.44%** (paper Table 1). A 17pp gap on the same benchmark is impossible from the same model. The uploaded model was almost certainly trained on FPB data. The Claude comparison (Table 3) used the uploaded model, making the "held-out FPB" framing misleading for that experiment.
+
+### 14.2 LoRA Rank Asymmetry Confound
+
+ModernBERT's fused `Wqkv` receives effectively ~r=5.3 per Q/K/V component (16/3) vs BERT's r=16 per separate projection. ModernBERT wins *despite* this disadvantage, but the magnitude of its advantage is unknowable. NB09e (full fine-tuning) was designed to eliminate this confound but those results aren't in the paper.
+
+### 14.3 Statistical Significance
+
+The head-to-head CV comparison reports p=0.093, which does not meet p<0.05. The paper nevertheless claims ModernBERT "consistently outperforms BERT."
+
+### 14.4 Multi-Seed Results Are Suspiciously Identical to Single-Seed
+
+Table 4 5-seed means match Experiment 1 single-seed results to 4 decimal places across all three metrics (0.8044, 0.9298, 0.7771). Statistically improbable.
+
+### 14.5 DataBoost Evaluated on In-Distribution Data
+
+Table 2 reports DataBoost results on the aggregated test set (same distribution as training), not on FPB. The FPB gain (from Table 7) is +1.65pp, not the +2.9pp reported.
+
+### 14.6 Claude Comparison Issues
+
+- Agents received truncated skill instructions (not full SKILL.md with examples)
+- Single stochastic run with no confidence intervals
+- 66% of test set is in-distribution for the fine-tuned model, not for Claude
+- Cost analysis ignores training/maintenance costs
+
+### 14.7 Training Data Was a Black Box
+
+All non-FPB labels are LLM-generated (prompt field: "Classify the sentiment of this [type]..."). Source 4 is 67% Canadian mining press releases. Source 8 (median 161 words) is silently truncated at 512 tokens. Class imbalance varies wildly by source (3.5% NEG for Source 4 vs 13.9% for Source 9). **Status: Being addressed via NB11 data provenance audit and new paper section.**
+
+### 14.8 Missing Experiments from Paper
+
+NB09d (sample efficiency curves), NB09e (full fine-tuning), and NB10 (gap-widening techniques) were conducted but excluded from the paper despite directly addressing its biggest limitations.
+
+### 14.9 Other Issues
+
+- Single benchmark (FPB only, from 2014)
+- No domain-specific pre-training (unlike original FinBERT)
+- Label ambiguity treated as model failure (50agree threshold means up to 50% disagreed)
+- No error analysis or confusion matrices in the paper (though NB10 has them)
+- Inconsistent numbers across experiments for the same protocol (~0.5pp variation)

@@ -1,0 +1,141 @@
+{
+  "test_set": "blind_benchmark_results.csv (723 samples)",
+  "modernfinbert": {
+    "accuracy": 0.8313,
+    "macro_f1": 0.7957,
+    "per_class": {
+      "NEGATIVE": {
+        "precision": 0.8493150684931506,
+        "recall": 0.6595744680851063,
+        "f1-score": 0.7425149700598802,
+        "support": 94.0
+      },
+      "NEUTRAL/MIXED": {
+        "precision": 0.8444924406047516,
+        "recall": 0.9050925925925926,
+        "f1-score": 0.8737430167597765,
+        "support": 432.0
+      },
+      "POSITIVE": {
+        "precision": 0.7914438502673797,
+        "recall": 0.751269035532995,
+        "f1-score": 0.7708333333333334,
+        "support": 197.0
+      },
+      "accuracy": 0.8312586445366529,
+      "macro avg": {
+        "precision": 0.8284171197884272,
+        "recall": 0.771978698736898,
+        "f1-score": 0.7956971067176634,
+        "support": 723.0
+      },
+      "weighted avg": {
+        "precision": 0.8306649920916773,
+        "recall": 0.8312586445366529,
+        "f1-score": 0.8286411578043138,
+        "support": 723.0
+      }
+    }
+  },
+  "claude": {
+    "accuracy": 0.7275,
+    "macro_f1": 0.7033,
+    "per_class": {
+      "NEGATIVE": {
+        "precision": 0.6111111111111112,
+        "recall": 0.8191489361702128,
+        "f1-score": 0.7,
+        "support": 94.0
+      },
+      "NEUTRAL/MIXED": {
+        "precision": 0.8034398034398035,
+        "recall": 0.7569444444444444,
+        "f1-score": 0.7794994040524433,
+        "support": 432.0
+      },
+      "POSITIVE": {
+        "precision": 0.6421052631578947,
+        "recall": 0.6192893401015228,
+        "f1-score": 0.6304909560723514,
+        "support": 197.0
+      },
+      "accuracy": 0.7275242047026279,
+      "macro avg": {
+        "precision": 0.6855520592362699,
+        "recall": 0.7317942402387266,
+        "f1-score": 0.7033301200415982,
+        "support": 723.0
+      },
+      "weighted avg": {
+        "precision": 0.7344746561169361,
+        "recall": 0.7275242047026279,
+        "f1-score": 0.7285621865794035,
+        "support": 723.0
+      }
+    }
+  },
+  "per_subset": {
+    "Non-FPB (in-distribution)": {
+      "n": 478,
+      "mfb_acc": 0.8243,
+      "mfb_f1": 0.7779,
+      "claude_acc": 0.6946,
+      "claude_f1": 0.667,
+      "gap_acc": 0.1297,
+      "gap_f1": 0.1109
+    },
+    "FPB (held-out)": {
+      "n": 243,
+      "mfb_acc": 0.8436,
+      "mfb_f1": 0.8233,
+      "claude_acc": 0.7942,
+      "claude_f1": 0.7741,
+      "gap_acc": 0.0494,
+      "gap_f1": 0.0493
+    },
+    "External": {
+      "n": 2,
+      "mfb_acc": 1.0,
+      "mfb_f1": 0.6667,
+      "claude_acc": 0.5,
+      "claude_f1": 0.3333,
+      "gap_acc": 0.5,
+      "gap_f1": 0.3333
+    },
+    "Overall": {
+      "n": 723,
+      "mfb_acc": 0.8313,
+      "mfb_f1": 0.7957,
+      "claude_acc": 0.7275,
+      "claude_f1": 0.7033,
+      "gap_acc": 0.1037,
+      "gap_f1": 0.0924
+    }
+  },
+  "per_text_type": {
+    "Earnings Calls": {
+      "n": 136,
+      "mfb_acc": 0.6912,
+      "claude_acc": 0.4779,
+      "gap_acc": 0.2132
+    },
+    "Mining/TSX-V": {
+      "n": 35,
+      "mfb_acc": 0.8857,
+      "claude_acc": 0.8286,
+      "gap_acc": 0.0571
+    },
+    "Press Release / Other": {
+      "n": 125,
+      "mfb_acc": 0.88,
+      "claude_acc": 0.776,
+      "gap_acc": 0.104
+    },
+    "Social Media": {
+      "n": 182,
+      "mfb_acc": 0.8736,
+      "claude_acc": 0.7747,
+      "gap_acc": 0.0989
+    }
+  }
+}
