@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.10)  14 MAR 2026 19:17
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.10)  14 MAR 2026 19:25
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -542,7 +542,7 @@ h stu-dent ini-tial-iza-tion, and early stopping---
  []
 
 [10]
-Overfull \hbox (3.1556pt too wide) in paragraph at lines 469--470
+Overfull \hbox (3.1556pt too wide) in paragraph at lines 468--469
 []\T1/cmr/bx/n/10.95 Training data com-po-si-tion\T1/cmr/m/n/10.95 : The ag-gre
 -gated train-ing cor-pus com-bines het-ero-ge-neous sources
  []
@@ -558,11 +558,11 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 Here is how much of TeX's memory you used:
  13316 strings out of 469006
  206434 string characters out of 5454813
- 634196 words of memory out of 5000000
+ 634321 words of memory out of 5000000
  41743 multiletter control sequences out of 15000+600000
  644988 words of font info for 86 fonts, out of 8000000 for 9000
  319 hyphenation exceptions out of 8191
- 75i,12n,79p,1681b,582s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,12n,79p,1706b,582s stack positions out of 10000i,1000n,20000p,200000b,200000s
  </Users/boo/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour/jknappen/ec/
 tcrm1095.600pk> </Users/boo/Library/texlive/2026basic/texmf-var/fonts/pk/ljfour
 /jknappen/ec/ecbx0800.600pk> </Users/boo/Library/texlive/2026basic/texmf-var/fo
@@ -585,7 +585,7 @@ sfonts/cm/cmr10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/public
 ic/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/type1/
 public/amsfonts/cm/cmsy7.pfb></usr/local/texlive/2026basic/texmf-dist/fonts/typ
 e1/public/amsfonts/cm/cmsy8.pfb>
-Output written on main.pdf (13 pages, 234900 bytes).
+Output written on main.pdf (13 pages, 234691 bytes).
 PDF statistics:
  846 PDF objects out of 1000 (max. 8388607)
  361 compressed objects within 4 object streams

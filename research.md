@@ -505,7 +505,7 @@ Table 2 reports DataBoost results on the aggregated test set (same distribution 
 
 ### 14.7 Training Data Provenance ~~(Was a Black Box)~~
 
-**Status: ADDRESSED.** NB11 (`notebooks/11_data_provenance_audit.ipynb`) completed a full provenance audit. Paper Section 3.1 now includes Table 1 (data provenance) documenting all 4 training sources, their LLM-generated annotation method, class distributions, and text lengths. Three key findings are integrated into the paper: (1) all non-FPB labels are LLM-generated, (2) Source 4 is 68% Canadian mining press releases, (3) Source 8 samples are truncated at 512 tokens. New limitation items added to Section 6. The protocol gap discussion (Section 5.1) now connects the 10.2% vs 12.5% NEGATIVE class mismatch to the held-out performance drop.
+**Status: ADDRESSED.** NB11 (`notebooks/11_data_provenance_audit.ipynb`) completed a full provenance audit. Paper Section 3.1 now includes Table 1 (data provenance) documenting all 4 training sources (AIERA transcripts, financial news sentiment, subjective QA, Twitter financial news), their class distributions, and text lengths. Three key findings are integrated into the paper: (1) class imbalance varies substantially across sources (3.4%–13.9% NEGATIVE), (2) Source 4 is 68% Canadian mining press releases, (3) Source 8 samples are truncated at 512 tokens. New limitation items added to Section 6. The protocol gap discussion (Section 5.1) now connects the 10.2% vs 12.5% NEGATIVE class mismatch to the held-out performance drop.
 
 ### 14.8 Missing Experiments from Paper
 
