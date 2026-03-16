@@ -7,12 +7,13 @@ data/processed/*
 # Model checkpoints
 models/checkpoints/*
 !models/checkpoints/.gitkeep
-kaggle_output/trainer_output/
-kaggle_output_*/
+
+# Kaggle exports (source of truth is notebooks/)
+kaggle_push*/
+kaggle_output*/
 
 # Logs
-logs/*
-!logs/.gitkeep
+logs/
 
 # Environment
 .env
