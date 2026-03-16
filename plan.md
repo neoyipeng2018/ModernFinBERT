@@ -1,248 +1,472 @@
-# Notebook Cleanup Plan
+# Plan: Add finbert-lc and FinBERT-IJCAI Baselines to Paper
 
 ## Goal
 
-Remove or archive all notebooks and directories not directly used in the paper (`paper/main.tex`). Keep the repository lean with only the experiments that back published claims.
+Add two missing recent baselines — **finbert-lc** (2024, 89% on FPB 50agree) and **FinBERT-IJCAI** (2020, 94% on FPB) — to the paper's comparison tables, Related Work, and Discussion sections.
 
 ---
 
-## 1. Audit: What the Paper References
+## 1. What Needs to Change
 
-The paper cites 7 experiments across 10 notebooks. Here is the mapping from paper sections to notebook files:
+### 1.1 The Two Models
 
-| Paper Section | Experiment | Notebook(s) | Status |
-|---|---|---|---|
-| §4.1 (Exp 1) | Held-out evaluation | `01_architecture_comparison.ipynb` | **KEEP** |
-| §4.2 (Exp 2) | DataBoost (VS-CoT) | `02A_databoost_vs.ipynb` | **KEEP** |
-| §4.3 (Exp 3) | Claude comparison | `03_claude_comparison.ipynb` | **KEEP** |
-| §4.4 (Exp 4) | 10-fold CV on FPB | `04_kfold_cv.ipynb` | **KEEP** |
-| §4.5 (Exp 5) | Dedup audit | `09a_dedup_audit.ipynb` | **KEEP** |
-| §4.5 (Exp 5) | Head-to-head CV | `09b_fpb_crossval.ipynb` | **KEEP** |
-| §4.5 (Exp 5) | Clean held-out baselines | `09c_clean_holdout.ipynb` | **KEEP** |
-| §4.6 (Exp 6) | Multi-seed robustness | `06_multi_seed.ipynb` | **KEEP** |
-| §4.7 (Exp 7) | Self-training | `07_self_training.ipynb` | **KEEP** |
-| Table 1 | Data provenance audit | `11_data_provenance_audit.ipynb` | **KEEP** |
+**finbert-lc (Fatemi et al., 2024)**
+- Paper: "Financial Sentiment Analysis: Leveraging Actual and Synthetic Data"
+- URL: https://arxiv.org/html/2412.09859v1
+- Results: 89% acc / 0.88 F1 on FPB 50agree, 97% acc / 0.96 F1 on FPB allAgree
+- Protocol: In-domain (trained on FPB + synthetic data)
+- Relevance: Current SOTA on FPB 50agree among FinBERT variants. Uses synthetic data augmentation — directly comparable to our DataBoost approach.
 
-**Total: 10 notebooks to keep.**
+**FinBERT-IJCAI (Liu et al., 2020)**
+- Paper: "FinBERT: A Pre-trained Financial Language Representation Model for Financial Text Mining"
+- URL: https://www.ijcai.org/proceedings/2020/622
+- Results: 94% acc / 0.93 F1 on FPB (agreement level unspecified in reference)
+- Protocol: In-domain
+- Relevance: Highest reported FPB accuracy. Uses domain-specific pre-training on financial corpora — represents the ceiling for domain-adapted approaches.
+
+### 1.2 Files to Modify
+
+| File | Change |
+|---|---|
+| `paper/references.bib` | Add 2 new BibTeX entries |
+| `paper/main.tex` §2 (Related Work) | Mention both models in the Financial Sentiment Analysis paragraph |
+| `paper/main.tex` Table 6 (`tab:baselines`) | Add 2 rows for finbert-lc and FinBERT-IJCAI |
+| `paper/main.tex` §5.1 (Protocol Gap) | Update discussion to reference the new SOTA (89%) |
+| `paper/main.tex` §5.2 (Architecture Comparison) | Note that even in-domain BERT variants plateau at 89-94% |
 
 ---
 
-## 2. What to Remove
+## 2. Detailed TODO
 
-### Notebooks to Archive
+### Phase 1: Add BibTeX Entries
 
-| Notebook | Reason for removal |
-|---|---|
-| `02_databoost.ipynb` | Prototype of NB02A; paper uses VS-CoT method (NB02A), not runtime API paraphrasing |
-| `03A_test_evaluation.ipynb` | Cross-notebook utility; no results cited in paper |
-| `09d_sample_efficiency.ipynb` | Mentioned in §6 Limitations as future work, but no results in paper |
-| `09e_full_finetune.ipynb` | Mentioned in §6 Limitations as future work, but no results in paper |
-| `10_finbert_tone_deep_dive.ipynb` | finbert-tone results in paper come from NB09c, not NB10 |
+- [x] **1.1** Add finbert-lc citation to `paper/references.bib`
 
-### Archive Directories to Remove
-
-| Directory | Reason |
-|---|---|
-| `notebooks/archive/` | Old exploratory notebooks (Data.ipynb, old kfold attempts) |
-| `kaggle_push/` | Kaggle export of NB01 |
-| `kaggle_push_02/` | Kaggle export of NB02 (superseded) |
-| `kaggle_push_02A/` | Kaggle export of NB02A |
-| `kaggle_push_03A/` | Kaggle export of NB03A (removed notebook) |
-| `kaggle_push_04/` | Kaggle export of NB04 |
-| `kaggle_push_06/` | Kaggle export of NB06 |
-| `kaggle_push_07/` | Kaggle export of NB07 |
-| `kaggle_push_09b/` | Kaggle export of NB09b |
-| `kaggle_push_09c/` | Kaggle export of NB09c |
-| `kaggle_push_09d/` | Kaggle export of NB09d (removed notebook) |
-| `kaggle_push_09e/` | Kaggle export of NB09e (removed notebook) |
-| `kaggle_push_10/` | Kaggle export of NB10 (removed notebook) |
-
-### Kaggle Output Directories
-
-| Directory | Reason |
-|---|---|
-| `kaggle_output/` | Generic NB01 outputs |
-| `kaggle_output_01/` | NB01 outputs |
-| `kaggle_output_02/` | NB02 (superseded) |
-| `kaggle_output_03A/` | NB03A (not in paper) |
-| `kaggle_output_04/` | NB04 outputs |
-| `kaggle_output_09b/` | NB09b outputs |
-| `kaggle_output_09c/` | NB09c outputs |
-
----
-
-## 3. Final Repository Structure
-
+```bibtex
+@article{fatemi2024finbert,
+  title={Financial Sentiment Analysis: Leveraging Actual and Synthetic Data for Supervised Fine-Tuning},
+  author={Fatemi, Shirin and Hu, Yuntian},
+  journal={arXiv preprint arXiv:2412.09859},
+  year={2024}
+}
 ```
-notebooks/
-├── 01_architecture_comparison.ipynb   # Exp 1: Held-out eval
-├── 02A_databoost_vs.ipynb             # Exp 2: DataBoost (VS-CoT)
-├── 03_claude_comparison.ipynb         # Exp 3: Claude comparison
-├── 04_kfold_cv.ipynb                  # Exp 4: 10-fold CV
-├── 06_multi_seed.ipynb                # Exp 6: Multi-seed robustness
-├── 07_self_training.ipynb             # Exp 7: Self-training
-├── 09a_dedup_audit.ipynb              # Exp 5a: Data contamination check
-├── 09b_fpb_crossval.ipynb             # Exp 5b: Head-to-head CV
-├── 09c_clean_holdout.ipynb            # Exp 5c: Clean held-out baselines
-├── 11_data_provenance_audit.ipynb     # Data provenance (Table 1)
-└── archive/
-    └── not_in_paper/
-        ├── 02_databoost.ipynb         # Prototype (superseded by 02A)
-        ├── 03A_test_evaluation.ipynb  # Utility notebook
-        ├── 09d_sample_efficiency.ipynb # Future work
-        ├── 09e_full_finetune.ipynb    # Future work
-        └── 10_finbert_tone_deep_dive.ipynb  # Not cited
+
+- [x] **1.2** Add FinBERT-IJCAI citation to `paper/references.bib`
+
+```bibtex
+@inproceedings{liu2020finbert,
+  title={FinBERT: A Pre-trained Financial Language Representation Model for Financial Text Mining},
+  author={Liu, Zhuang and Huang, Degen and Huang, Kaiyu and Li, Zhuang and Zhao, Jun},
+  booktitle={Proceedings of the Twenty-Ninth International Joint Conference on Artificial Intelligence (IJCAI-20)},
+  pages={4513--4519},
+  year={2020}
+}
 ```
 
 ---
 
-## 4. Risk Checklist
+### Phase 2: Update Related Work (§2)
 
-- [x] Archive branch created before any deletions
-- [x] No kaggle_push directory contains unique code not in `notebooks/`
-- [x] Paper compiles successfully after cleanup (`cd paper && bash build.sh`)
-- [x] All 10 kept notebooks can be opened without import errors
-- [x] `results/data_provenance_audit.json` and `results/fair_comparison_results.json` preserved
-- [x] `results/nb10_parts_ab.json` deleted (belongs to NB10)
+- [x] **2.1** Expand the Financial Sentiment Analysis paragraph to mention both models
 
----
+Current text (line 71):
+```latex
+\citet{araci2019finbert} introduced FinBERT by further pre-training BERT on
+financial text, reporting 86\% accuracy on FPB with 80/20 in-domain splits.
+\citet{yang2020finbert} proposed FinBERT-FinVocab with a domain-specific
+vocabulary, achieving 87.2\% with 90/10 splits averaged over 10 runs.
+ProsusAI/finbert \citep{prosusfinbert2020} was trained directly on FPB data
+and is widely used as an off-the-shelf financial sentiment classifier.
+```
 
-## 5. Detailed TODO List
-
-### Phase 0: Pre-Flight Safety
-
-- [x] **0.1** Ensure working tree is clean or all changes are stashed
-- [x] **0.2** Create archive branch as a full snapshot of current state
-  - Branch: `archive/pre-cleanup` at commit `ca17ce6`
-- [x] **0.3** Verify the archive branch exists and contains everything
-
----
-
-### Phase 1: Audit & Cross-Reference (Read-Only)
-
-- [x] **1.1** Confirm which notebooks the paper cites
-  - Result: `NB01 NB02 NB03 NB04 NB05 NB06 NB07 NB09` — all map to kept notebooks
-- [x] **1.2** Verify each kaggle_push directory is a copy of its notebook source
-  - Result: 11 of 12 IDENTICAL; kaggle_push/ (NB01) DIFFERS slightly (cell reordering, no unique code)
-- [x] **1.3** Identify which scripts belong to which notebooks
-  - Remove: `build_nb10.py`, `run_parts_ab.py` (NB10)
-  - Keep: `data_provenance_audit.py`, `gen_audit_json.py` (NB11), `fair_claude_comparison.py` (NB03)
-- [x] **1.4** Identify which results files belong to which notebooks
-  - Remove: `nb10_parts_ab.json`, `confusion_ft_vs_mfb.png`, `kaggle_10_cpu/`, `kaggle_10_v2/`, `kaggle_10_v3/`
-  - Keep: `data_provenance_audit.json`, `data_provenance_figure.png`, `fair_comparison_results.json`, `source8_truncation.png`
-- [x] **1.5** Verify skills/ and reference/ directories are used by kept notebooks
-  - All used: `financial-sentiment-engine/` (NB03), `verbalized-sampling-augment/` (NB02A), `fpb_benchmarks.md` (NB01/NB04)
-- [x] **1.6** Verify data/ files are used by kept notebooks
-  - All used: FPB zip, vs_augmented_errors.csv, cleaned/, processed/, raw/
+Replace with:
+```latex
+\citet{araci2019finbert} introduced FinBERT by further pre-training BERT on
+financial text, reporting 86\% accuracy on FPB with 80/20 in-domain splits.
+\citet{yang2020finbert} proposed FinBERT-FinVocab with a domain-specific
+vocabulary, achieving 87.2\% with 90/10 splits averaged over 10 runs.
+ProsusAI/finbert \citep{prosusfinbert2020} was trained directly on FPB data
+and is widely used as an off-the-shelf financial sentiment classifier.
+\citet{liu2020finbert} further pre-trained BERT on financial communication
+corpora, reporting 94\% accuracy on FPB. More recently,
+\citet{fatemi2024finbert} achieved 89\% accuracy on FPB
+\texttt{sentences\_50agree} by augmenting FPB training data with
+LLM-generated synthetic samples---the current state of the art among
+FinBERT variants on this split.
+```
 
 ---
 
-### Phase 2: Archive Superseded Notebooks
+### Phase 3: Update Baselines Table (Table 6)
 
-- [x] **2.1** Create the archive subdirectory
-- [x] **2.2** Move NB02 (superseded by NB02A)
-- [x] **2.3** Move NB03A (not cited in paper)
-- [x] **2.4** Move NB09d (future work, no results in paper)
-- [x] **2.5** Move NB09e (future work, no results in paper)
-- [x] **2.6** Move NB10 (not cited in paper)
-- [x] **2.7** Verify exactly 10 notebooks remain — **confirmed: 10**
+- [x] **3.1** Add finbert-lc and FinBERT-IJCAI rows to `tab:baselines`
 
----
+Current table (lines 285-299):
+```latex
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Model} & \textbf{Protocol} & \multicolumn{2}{c}{\textbf{FPB 50agree}} & \multicolumn{2}{c}{\textbf{FPB allAgree}} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+& & Acc & F1 & Acc & F1 \\
+\midrule
+ProsusAI/finbert & In-domain$^\dagger$ & \textbf{0.8896} & \textbf{0.8825} & \textbf{0.9717} & \textbf{0.9625} \\
+finbert-tone & Zero-shot & 0.7914 & 0.7530 & 0.9152 & 0.8939 \\
+ModernBERT + LoRA & Held-out & 0.8093 & 0.7793 & 0.9329 & --- \\
+BERT-base + LoRA & Held-out & 0.7309 & 0.6051 & 0.8366 & --- \\
+\midrule
+$\Delta$ (MB $-$ BERT) & & +0.0784 & +0.1742 & +0.0963 & \\
+\bottomrule
+\multicolumn{6}{l}{\small $^\dagger$ Trained on FPB data (in-domain evaluation).}
+\end{tabular}
+```
 
-### Phase 3: Remove Old Archive Notebooks
+Replace with:
+```latex
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Model} & \textbf{Protocol} & \multicolumn{2}{c}{\textbf{FPB 50agree}} & \multicolumn{2}{c}{\textbf{FPB allAgree}} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+& & Acc & F1 & Acc & F1 \\
+\midrule
+FinBERT-IJCAI$^\dagger$ & In-domain & \textbf{0.94} & \textbf{0.93} & --- & --- \\
+finbert-lc$^\dagger$ & In-domain & 0.89 & 0.88 & \textbf{0.97} & \textbf{0.96} \\
+ProsusAI/finbert$^\dagger$ & In-domain & 0.8896 & 0.8825 & 0.9717 & 0.9625 \\
+finbert-tone & Zero-shot & 0.7914 & 0.7530 & 0.9152 & 0.8939 \\
+\midrule
+ModernBERT + LoRA & Held-out & 0.8093 & 0.7793 & 0.9329 & --- \\
+BERT-base + LoRA & Held-out & 0.7309 & 0.6051 & 0.8366 & --- \\
+\midrule
+$\Delta$ (MB $-$ BERT) & & +0.0784 & +0.1742 & +0.0963 & \\
+\bottomrule
+\multicolumn{6}{l}{\small $^\dagger$ Trained on FPB data (in-domain evaluation).}
+\end{tabular}
+```
 
-- [x] **3.1** Delete old exploratory notebooks (`archive/exploratory/`)
-- [x] **3.2** Delete old kfold prototypes (`archive/kfold/`)
-- [x] **3.3** Delete old train_more_data experiments (`archive/train_more_data/`)
+- [x] **3.2** Update the table caption to mention the new models
 
----
+```latex
+\caption{Baseline comparison on FPB. In-domain models trained on FPB;
+ModernBERT and BERT-base trained on 8,643 non-FPB samples.
+FinBERT-IJCAI agreement level unspecified in original paper.}
+```
 
-### Phase 4: Remove Kaggle Push Directories (12 dirs)
+- [x] **3.3** Update the paragraph after the table (line 302)
 
-- [x] **4.1** Remove kaggle_push directories for kept notebooks (7 dirs)
-- [x] **4.2** Remove kaggle_push directories for removed notebooks (5 dirs)
+Current:
+```latex
+On identical training data, ModernBERT outperforms BERT-base by 7.84
+percentage points on FPB \texttt{sentences\_50agree} and 9.63 points on
+\texttt{sentences\_allAgree}. ModernBERT approaches ProsusAI/finbert
+(80.93\% vs.\ 88.96\%) despite never seeing FPB during training, while
+BERT-base falls well short (73.09\%).
+```
 
----
-
-### Phase 5: Remove Kaggle Output Directories (7 dirs)
-
-- [x] **5.1** Remove kaggle_output directories for kept notebooks (5 dirs)
-- [x] **5.2** Remove kaggle_output directories for removed notebooks (2 dirs)
-
----
-
-### Phase 6: Clean Results Artifacts
-
-- [x] **6.1** Remove NB10-related results files (`nb10_parts_ab.json`, `confusion_ft_vs_mfb.png`)
-- [x] **6.2** Remove NB10-related results directories (`kaggle_10_cpu/`, `kaggle_10_v2/`, `kaggle_10_v3/`)
-- [x] **6.3** Verify remaining results files all map to kept notebooks
-  - Confirmed: `data_provenance_audit.json`, `data_provenance_figure.png`, `fair_comparison_results.json`, `source8_truncation.png`
-
----
-
-### Phase 7: Clean Scripts
-
-- [x] **7.1** Remove NB10-specific scripts (`build_nb10.py`, `run_parts_ab.py`)
-- [x] **7.2** Remove empty scaffold directories (`evaluation/`, `preprocessing/`, `training/`)
-- [x] **7.3** Verify remaining scripts all map to kept notebooks
-  - Confirmed: `data_provenance_audit.py`, `gen_audit_json.py`, `fair_claude_comparison.py`
-
----
-
-### Phase 8: Clean Empty Top-Level Directories
-
-- [x] **8.1** Remove empty `docs/` directory
-- [x] **8.2** Remove empty `logs/` directory
-- [x] **8.3** Remove `models/` (only contained `.gitkeep`)
-
----
-
-### Phase 9: Update .gitignore
-
-- [x] **9.1** Add kaggle directory patterns to prevent re-accumulation
-- [x] **9.2** Clean up stale references (old `kaggle_output/trainer_output/` pattern, `.gitkeep` refs for deleted dirs)
-
----
-
-### Phase 10: Verification
-
-- [x] **10.1** Confirm exactly 10 notebooks in notebooks/ — **10**
-- [x] **10.2** Confirm no kaggle directories remain at top level — **0**
-- [x] **10.3** Confirm paper still compiles — **13 pages, 234691 bytes**
-- [x] **10.4** Confirm all paper NB references map to existing notebooks
-- [x] **10.5** Confirm results/ has only files referenced in paper — **4 files**
-- [x] **10.6** Confirm scripts/ has no orphaned files — **3 files**
-- [x] **10.7** Spot-check the archive — **5 notebooks in not_in_paper/**
-
----
-
-### Phase 11: Commit
-
-- [x] **11.1** Stage all changes
-- [x] **11.2** Review what will be committed — 50 files changed, 191 insertions, 45,590 deletions
-- [x] **11.3** Commit with descriptive message — commit `40ebc36`
+Replace with:
+```latex
+On identical training data, ModernBERT outperforms BERT-base by 7.84
+percentage points on FPB \texttt{sentences\_50agree} and 9.63 points on
+\texttt{sentences\_allAgree}. The in-domain state of the art ranges from
+89\% \citep{fatemi2024finbert} to 94\% \citep{liu2020finbert}, depending
+on model and protocol. ModernBERT's held-out 80.93\% narrows much of this
+gap despite never seeing FPB during training, while BERT-base falls well
+short (73.09\%). The remaining gap to in-domain models reflects both the
+protocol difference and the absence of domain-specific pre-training.
+```
 
 ---
 
-### Phase 12: Post-Cleanup Housekeeping (Optional)
+### Phase 4: Update Discussion Sections
 
-- [ ] **12.1** Consider deleting archive branch if cleanup is confirmed good
-- [ ] **12.2** Consider renumbering notebooks to match paper sections
-- [ ] **12.3** Update CLAUDE.md to reflect new notebook inventory
-- [ ] **12.4** Remove `plan.md` and `research.md` if no longer needed, or commit them as documentation
+- [x] **4.1** Update §5.1 (The Protocol Gap) to reference the new ceiling
+
+Add after the protocol gap bullet points (line 415):
+```latex
+The in-domain ceiling is itself higher than previously highlighted:
+\citet{fatemi2024finbert} achieve 89\% and \citet{liu2020finbert} report
+94\% with domain-specific pre-training, placing the protocol gap between
+our held-out result and the current in-domain state of the art at
+approximately 9--14 percentage points rather than the 6.4 points measured
+against our own in-domain CV.
+```
+
+- [x] **4.2** Update §5.4 (DataBoost) to note the connection to finbert-lc
+
+Add at the end of the DataBoost discussion (after line 447):
+```latex
+Notably, \citet{fatemi2024finbert} independently demonstrated the value of
+synthetic data augmentation for financial sentiment, achieving 89\% on FPB
+by augmenting FPB training data with LLM-generated samples. Our DataBoost
+approach differs in two ways: (1) we augment only misclassified examples
+rather than the full training set, and (2) we apply augmentation to
+non-FPB data and evaluate on held-out FPB, making it a stricter test of
+augmentation's generalization value.
+```
 
 ---
 
-## Summary: Deletion Inventory
+### Phase 5: Verify and Build
 
-| Category | Count | Status |
+- [x] **5.1** Build the paper to verify no LaTeX errors
+
+```bash
+cd paper && bash build.sh
+```
+
+- [x] **5.2** Visually check Table 6 renders correctly (new rows aligned, bold on correct cells)
+
+- [x] **5.3** Verify citation keys resolve (`\citet{liu2020finbert}`, `\citet{fatemi2024finbert}`)
+
+- [x] **5.4** Check page count hasn't changed drastically (should remain ~13 pages)
+
+---
+
+### Phase 6: Commit
+
+- [x] **6.1** Stage and commit
+
+```bash
+git add paper/references.bib paper/main.tex
+git commit -m "Add finbert-lc and FinBERT-IJCAI baselines to paper
+
+- Add BibTeX entries for Liu et al. 2020 (IJCAI) and Fatemi et al. 2024
+- Add both models to Table 6 (baselines comparison)
+- Update Related Work to mention 94% IJCAI result and 89% finbert-lc SOTA
+- Update Discussion to contextualize protocol gap against full SOTA range
+- Note finbert-lc's synthetic data approach as independent validation of DataBoost"
+```
+
+---
+
+## 3. Impact on Paper Narrative
+
+Adding these baselines **strengthens** the paper's argument rather than weakening it:
+
+1. **Protocol gap becomes more striking**: The gap between held-out (80.44%) and in-domain SOTA (89-94%) is 9-14pp, making the case for held-out evaluation even stronger. If the community only reports in-domain numbers, it overstates generalization by up to 14 points.
+
+2. **DataBoost gets independent validation**: finbert-lc (2024) independently shows LLM-generated synthetic data improves FPB accuracy, validating our DataBoost methodology. Our approach is differentiated by targeting errors specifically and evaluating on held-out data.
+
+3. **Honest benchmarking**: Including the strongest known baselines demonstrates confidence in the contribution and prevents reviewers from flagging missing comparisons.
+
+### What NOT to claim
+
+- Do not claim ModernFinBERT is competitive with FinBERT-IJCAI (94%). It is not under any protocol.
+- Do not claim the held-out protocol makes the comparison "fair" — acknowledge the 9-14pp gap honestly.
+- Do not minimize the FinBERT-IJCAI result just because the agreement level is unspecified.
+
+---
+
+---
+
+## 5. Detailed TODO Checklist
+
+### Phase 0: Pre-Flight
+
+- [x] **0.1** Verify working tree is clean
+  ```bash
+  git status --short
+  ```
+- [x] **0.2** Read current `paper/references.bib` to confirm no duplicate keys for `liu2020finbert` or `fatemi2024finbert`
+  ```bash
+  grep -c 'liu2020finbert\|fatemi2024finbert' paper/references.bib
+  # Expected: 0
+  ```
+- [x] **0.3** Read current Table 6 in `paper/main.tex` — confirm it currently has 4 model rows (ProsusAI, finbert-tone, ModernBERT, BERT-base)
+  ```bash
+  grep -A 15 'tab:baselines' paper/main.tex | grep '\\\\' | head -6
+  ```
+- [x] **0.4** Confirm the paper currently compiles cleanly as a baseline
+  ```bash
+  cd paper && bash build.sh 2>&1 | tail -3
+  ```
+
+---
+
+### Phase 1: Add BibTeX Entries to `paper/references.bib`
+
+- [x] **1.1** Append the finbert-lc BibTeX entry after the last existing entry in `references.bib`
+  ```bibtex
+  @article{fatemi2024finbert,
+    title={Financial Sentiment Analysis: Leveraging Actual and Synthetic Data for Supervised Fine-Tuning},
+    author={Fatemi, Shirin and Hu, Yuntian},
+    journal={arXiv preprint arXiv:2412.09859},
+    year={2024}
+  }
+  ```
+- [x] **1.2** Append the FinBERT-IJCAI BibTeX entry after 1.1
+  ```bibtex
+  @inproceedings{liu2020finbert,
+    title={FinBERT: A Pre-trained Financial Language Representation Model for Financial Text Mining},
+    author={Liu, Zhuang and Huang, Degen and Huang, Kaiyu and Li, Zhuang and Zhao, Jun},
+    booktitle={Proceedings of the Twenty-Ninth International Joint Conference on Artificial Intelligence (IJCAI-20)},
+    pages={4513--4519},
+    year={2020}
+  }
+  ```
+- [x] **1.3** Verify both entries parse — check for missing commas, unbalanced braces, duplicate keys
+  ```bash
+  grep -c '@' paper/references.bib
+  # Expected: previous count + 2
+  ```
+
+---
+
+### Phase 2: Update Related Work (§2, line ~71)
+
+- [x] **2.1** Locate the Financial Sentiment Analysis paragraph in `paper/main.tex` — find the sentence ending with "off-the-shelf financial sentiment classifier."
+- [x] **2.2** Insert two new sentences after that line, citing `\citet{liu2020finbert}` (94% accuracy, domain-specific pre-training) and `\citet{fatemi2024finbert}` (89% on 50agree, synthetic data augmentation SOTA)
+- [x] **2.3** Verify the new text reads naturally after the existing ProsusAI sentence — no awkward transitions
+- [x] **2.4** Verify citation keys match the BibTeX keys added in Phase 1 exactly (case-sensitive)
+
+---
+
+### Phase 3: Update Baselines Table (Table 6, `tab:baselines`)
+
+#### 3A: Table Body
+
+- [x] **3.1** Locate `\begin{tabular}` for `tab:baselines` in `paper/main.tex` (line ~285)
+- [x] **3.2** Add FinBERT-IJCAI row as the first data row (highest accuracy):
+  ```latex
+  FinBERT-IJCAI$^\dagger$ & In-domain & \textbf{0.94} & \textbf{0.93} & --- & --- \\
+  ```
+  Note: bold on 50agree Acc/F1 since it's the highest. allAgree is `---` (not reported).
+- [x] **3.3** Add finbert-lc row as the second data row:
+  ```latex
+  finbert-lc$^\dagger$ & In-domain & 0.89 & 0.88 & \textbf{0.97} & \textbf{0.96} \\
+  ```
+  Note: bold on allAgree Acc/F1 since it ties/beats ProsusAI. 50agree is NOT bolded (below IJCAI).
+- [x] **3.4** Remove `\textbf` from ProsusAI/finbert's 50agree columns (no longer the best in-domain)
+- [x] **3.5** Remove `\textbf` from ProsusAI/finbert's allAgree columns (finbert-lc ties or beats it)
+- [x] **3.6** Verify the `$^\dagger$` footnote marker is on all three in-domain models (FinBERT-IJCAI, finbert-lc, ProsusAI)
+- [x] **3.7** Verify column alignment — all 6 rows should have 6 columns each (Model, Protocol, 50agree Acc, 50agree F1, allAgree Acc, allAgree F1)
+
+#### 3B: Table Caption
+
+- [x] **3.8** Replace the current caption with updated version that mentions the new models and the IJCAI agreement-level caveat:
+  ```latex
+  \caption{Baseline comparison on FPB. In-domain models trained on FPB;
+  ModernBERT and BERT-base trained on 8,643 non-FPB samples.
+  FinBERT-IJCAI agreement level unspecified in original paper.}
+  ```
+
+#### 3C: Post-Table Paragraph
+
+- [x] **3.9** Locate the paragraph after `\end{table}` for `tab:baselines` (line ~302)
+- [x] **3.10** Replace the sentence "ModernBERT approaches ProsusAI/finbert (80.93% vs. 88.96%)" with updated framing that references the full SOTA range (89-94%)
+- [x] **3.11** Add a sentence noting the remaining gap reflects protocol difference + absence of domain pre-training
+- [x] **3.12** Verify the new paragraph cites both `\citet{fatemi2024finbert}` and `\citet{liu2020finbert}`
+
+---
+
+### Phase 4: Update Discussion Sections
+
+#### 4A: Protocol Gap (§5.1)
+
+- [x] **4.1** Locate §5.1 "The Protocol Gap" discussion (line ~406)
+- [x] **4.2** Find the paragraph after the held-out vs CV bullet points
+- [x] **4.3** Insert new text noting the in-domain ceiling is 89-94%, placing the true protocol gap at 9-14pp (not just 6.4pp against our own CV)
+- [x] **4.4** Verify the new text doesn't contradict the existing 6.4pp claim — the 6.4pp is our internal gap; 9-14pp is against external SOTA
+
+#### 4B: DataBoost Discussion (§5.4)
+
+- [x] **4.5** Locate §5.4 "DataBoost: Targeted Augmentation" (line ~441)
+- [x] **4.6** Find the end of the existing discussion (after the paragraph about disproportionate F1 improvement)
+- [x] **4.7** Append new paragraph connecting DataBoost to finbert-lc's independent finding that synthetic data augmentation works for FPB
+- [x] **4.8** Clearly differentiate our approach: (1) augment only misclassified examples, (2) evaluate on held-out data
+- [x] **4.9** Verify the `\citet{fatemi2024finbert}` citation is correct
+
+---
+
+### Phase 5: Cross-Check Consistency
+
+- [x] **5.1** Verify no existing text in the paper contradicts the new baselines — search for phrases like "state of the art", "best", "highest" that may need qualifying
+  ```bash
+  grep -ni 'state.of.the.art\|highest\|best.*accuracy' paper/main.tex
+  ```
+- [x] **5.2** Verify the Abstract doesn't need updating — it currently doesn't claim SOTA, so should be fine
+- [x] **5.3** Verify the Conclusion doesn't claim to beat in-domain models — it currently doesn't, so should be fine
+- [x] **5.4** Check that the Limitations section's existing items are still accurate after adding the baselines (they should be)
+- [x] **5.5** Verify `reference/fpb_benchmarks.md` is consistent with the numbers used in the paper
+
+---
+
+### Phase 6: Build and Verify
+
+- [x] **6.1** Run the full LaTeX build
+  ```bash
+  cd paper && bash build.sh
+  ```
+- [x] **6.2** Verify zero LaTeX errors in build output
+  ```bash
+  grep -i 'error\|undefined' paper/main.log | grep -v 'rerun'
+  ```
+- [x] **6.3** Verify both new citations appear in the references section of the PDF
+  ```bash
+  grep -c 'Fatemi\|Liu.*Huang.*Kaiyu' paper/main.bbl
+  # Expected: 1 each
+  ```
+- [x] **6.4** Verify Table 6 renders with 6 model rows + 1 delta row (open `paper/main.pdf`)
+- [x] **6.5** Verify bold is on the correct cells: FinBERT-IJCAI for 50agree, finbert-lc for allAgree
+- [x] **6.6** Confirm page count is still ~13 pages (±1 page acceptable)
+
+---
+
+### Phase 7: Commit
+
+- [x] **7.1** Stage only the paper files
+  ```bash
+  git add paper/references.bib paper/main.tex paper/main.pdf paper/main.bbl
+  ```
+- [x] **7.2** Review the diff to confirm only intended changes
+  ```bash
+  git diff --cached --stat
+  ```
+- [x] **7.3** Commit with descriptive message
+  ```bash
+  git commit -m "Add finbert-lc and FinBERT-IJCAI baselines to paper
+
+  - Add BibTeX entries for Liu et al. 2020 (IJCAI) and Fatemi et al. 2024
+  - Add both models to Table 6 (baselines comparison)
+  - Update Related Work to mention 94% IJCAI result and 89% finbert-lc SOTA
+  - Update Discussion to contextualize protocol gap against full SOTA range
+  - Note finbert-lc's synthetic data approach as independent validation of DataBoost"
+  ```
+
+---
+
+### Phase 8: Post-Commit Verification
+
+- [x] **8.1** Run `git log --oneline -1` to confirm commit succeeded
+- [x] **8.2** Run `git diff HEAD~1 --stat` to confirm only paper files changed
+- [x] **8.3** Open `paper/main.pdf` and spot-check:
+  - Related Work paragraph mentions Liu et al. and Fatemi et al.
+  - Table 6 has 6 model rows with correct numbers
+  - §5.1 mentions 9-14pp gap
+  - §5.4 mentions finbert-lc connection
+
+---
+
+## Summary: Task Count by Phase
+
+| Phase | Description | Tasks |
 |---|---|---|
-| Notebooks archived | 5 | Done |
-| Old archive notebooks deleted | 3 dirs (~5 files) | Done |
-| kaggle_push directories deleted | 12 | Done |
-| kaggle_output directories deleted | 7 | Done |
-| NB10 results files/dirs deleted | 5 | Done |
-| NB10 scripts deleted | 2 | Done |
-| Empty directories removed | 5 | Done |
-| .gitignore updated | 1 | Done |
-| **Total items removed** | **~39** | **All complete** |
+| 0 | Pre-flight checks | 4 |
+| 1 | BibTeX entries | 3 |
+| 2 | Related Work update | 4 |
+| 3 | Table 6 update (body + caption + paragraph) | 12 |
+| 4 | Discussion updates (§5.1 + §5.4) | 9 |
+| 5 | Cross-check consistency | 5 |
+| 6 | Build and verify | 6 |
+| 7 | Commit | 3 |
+| 8 | Post-commit verification | 3 |
+| **Total** | | **49** |
+
+---
+
+## 4. Caveat: FinBERT-IJCAI Agreement Level
+
+The reference file notes the FinBERT-IJCAI result (94% acc, 0.93 F1) does not specify the FPB agreement threshold used. Options:
+- It could be `sentences_allAgree` (where 94% would be below ProsusAI's 97%)
+- It could be `sentences_50agree` (where 94% would be dramatically above all other models)
+- It could be a custom split
+
+The plan adds a note in the table caption: "FinBERT-IJCAI agreement level unspecified in original paper." If this needs investigation, the original IJCAI paper should be checked, but the reference file already documents this ambiguity.

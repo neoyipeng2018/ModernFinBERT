@@ -68,7 +68,7 @@ A key finding is that evaluation protocol choice dramatically affects reported p
 % ============================================================
 
 \paragraph{Financial Sentiment Analysis.}
-The FinancialPhraseBank (FPB) dataset \citep{malo2014good} has been the de facto benchmark for financial sentiment analysis since its release. It contains 4,846 sentences annotated by financial professionals with sentiment labels at varying agreement thresholds. \citet{araci2019finbert} introduced FinBERT by further pre-training BERT on financial text, reporting 86\% accuracy on FPB with 80/20 in-domain splits. \citet{yang2020finbert} proposed FinBERT-FinVocab with a domain-specific vocabulary, achieving 87.2\% with 90/10 splits averaged over 10 runs. ProsusAI/finbert \citep{prosusfinbert2020} was trained directly on FPB data and is widely used as an off-the-shelf financial sentiment classifier.
+The FinancialPhraseBank (FPB) dataset \citep{malo2014good} has been the de facto benchmark for financial sentiment analysis since its release. It contains 4,846 sentences annotated by financial professionals with sentiment labels at varying agreement thresholds. \citet{araci2019finbert} introduced FinBERT by further pre-training BERT on financial text, reporting 86\% accuracy on FPB with 80/20 in-domain splits. \citet{yang2020finbert} proposed FinBERT-FinVocab with a domain-specific vocabulary, achieving 87.2\% with 90/10 splits averaged over 10 runs. ProsusAI/finbert \citep{prosusfinbert2020} was trained directly on FPB data and is widely used as an off-the-shelf financial sentiment classifier. \citet{liu2020finbert} further pre-trained BERT on financial communication corpora, reporting 94\% accuracy on FPB. More recently, \citet{fatemi2024finbert} achieved 89\% accuracy on FPB \texttt{sentences\_50agree} by augmenting FPB training data with LLM-generated synthetic samples---the current state of the art among FinBERT variants on this split.
 
 A persistent challenge in this literature is the inconsistency of evaluation protocols: some works use in-domain train/test splits of varying ratios, others use cross-validation, and few evaluate on held-out data. This makes direct comparison difficult and can overstate generalization performance.
 
@@ -280,7 +280,7 @@ Table~\ref{tab:baselines} presents the held-out comparison.
 
 \begin{table}[h]
 \centering
-\caption{Baseline comparison on FPB. ModernBERT and BERT-base trained on identical 8,643 samples with FPB excluded. ProsusAI/finbert trained on FPB (in-domain).}
+\caption{Baseline comparison on FPB. In-domain models trained on FPB; ModernBERT and BERT-base trained on 8,643 non-FPB samples. FinBERT-IJCAI agreement level unspecified in original paper.}
 \label{tab:baselines}
 \begin{tabular}{llcccc}
 \toprule
@@ -288,8 +288,11 @@ Table~\ref{tab:baselines} presents the held-out comparison.
 \cmidrule(lr){3-4} \cmidrule(lr){5-6}
 & & Acc & F1 & Acc & F1 \\
 \midrule
-ProsusAI/finbert & In-domain$^\dagger$ & \textbf{0.8896} & \textbf{0.8825} & \textbf{0.9717} & \textbf{0.9625} \\
+FinBERT-IJCAI$^\dagger$ & In-domain & \textbf{0.94} & \textbf{0.93} & --- & --- \\
+finbert-lc$^\dagger$ & In-domain & 0.89 & 0.88 & \textbf{0.97} & \textbf{0.96} \\
+ProsusAI/finbert$^\dagger$ & In-domain & 0.8896 & 0.8825 & 0.9717 & 0.9625 \\
 finbert-tone & Zero-shot & 0.7914 & 0.7530 & 0.9152 & 0.8939 \\
+\midrule
 ModernBERT + LoRA & Held-out & 0.8093 & 0.7793 & 0.9329 & --- \\
 BERT-base + LoRA & Held-out & 0.7309 & 0.6051 & 0.8366 & --- \\
 \midrule
@@ -299,7 +302,7 @@ $\Delta$ (MB $-$ BERT) & & +0.0784 & +0.1742 & +0.0963 & \\
 \end{tabular}
 \end{table}
 
-On identical training data, ModernBERT outperforms BERT-base by 7.84 percentage points on FPB \texttt{sentences\_50agree} and 9.63 points on \texttt{sentences\_allAgree}. ModernBERT approaches ProsusAI/finbert (80.93\% vs.\ 88.96\%) despite never seeing FPB during training, while BERT-base falls well short (73.09\%).
+On identical training data, ModernBERT outperforms BERT-base by 7.84 percentage points on FPB \texttt{sentences\_50agree} and 9.63 points on \texttt{sentences\_allAgree}. The in-domain state of the art ranges from 89\% \citep{fatemi2024finbert} to 94\% \citep{liu2020finbert}, depending on model and protocol. ModernBERT's held-out 80.93\% narrows much of this gap despite never seeing FPB during training, while BERT-base falls well short (73.09\%). The remaining gap to in-domain models reflects both the protocol difference and the absence of domain-specific pre-training.
 
 \paragraph{Head-to-head cross-validation.}
 To further validate this comparison, we run stratified 10-fold CV on FPB \texttt{sentences\_50agree} for both architectures under identical LoRA $r=16$ configurations (batch size 16, learning rate $2 \times 10^{-4}$, cosine schedule, 10 epochs, FP16).
@@ -412,7 +415,7 @@ Our experiments reveal a fundamental tension in financial sentiment evaluation. 
     \item \textbf{Held-out evaluation}: 80.44\% accuracy (FPB excluded from training)
 \end{itemize}
 
-This 6.4 percentage point ``protocol gap'' arises because in-domain CV allows the model to train on FPB-distributed data, while the held-out setting tests true generalization. Our data provenance audit (Table~\ref{tab:data-provenance}) reveals a contributing factor: the training data has an overall NEGATIVE class rate of 10.2\%, below FPB's 12.5\%, creating a class distribution shift that partially explains the held-out performance drop. We argue that reporting both protocols is essential for honest evaluation, and that the held-out number better reflects real-world deployment performance where the model encounters novel financial text.
+This 6.4 percentage point ``protocol gap'' arises because in-domain CV allows the model to train on FPB-distributed data, while the held-out setting tests true generalization. Our data provenance audit (Table~\ref{tab:data-provenance}) reveals a contributing factor: the training data has an overall NEGATIVE class rate of 10.2\%, below FPB's 12.5\%, creating a class distribution shift that partially explains the held-out performance drop. We argue that reporting both protocols is essential for honest evaluation, and that the held-out number better reflects real-world deployment performance where the model encounters novel financial text. The in-domain ceiling is itself higher than previously highlighted: \citet{fatemi2024finbert} achieve 89\% and \citet{liu2020finbert} report 94\% with domain-specific pre-training, placing the protocol gap between our held-out result and the current in-domain state of the art at approximately 9--14 percentage points rather than the 6.4 points measured against our own in-domain CV.
 
 \subsection{Architecture Comparison: ModernBERT vs.\ BERT}
 
@@ -445,6 +448,8 @@ The DataBoost method's 7.8-point macro F1 improvement (Table~\ref{tab:databoost}
 The use of Verbalized Sampling (VS-CoT) for paraphrase generation is a key design choice. Standard LLM paraphrasing mode-collapses to near-identical rewrites of the input \citep{zhang2025verbalized}, which provides limited additional training signal. By requiring the generator to produce $k$ candidates with explicit probability estimates spanning different financial registers, VS-CoT ensures that each misclassified sample yields genuinely diverse augmentations---from earnings call transcripts to analyst notes to SEC filings---rather than superficial lexical variation.
 
 The disproportionate F1 improvement (7.8 points) relative to accuracy improvement (2.9 points) confirms that DataBoost primarily helps minority classes. This is valuable in financial applications where detecting negative sentiment (e.g., risk signals) is often more important than correctly classifying the dominant neutral class.
+
+Notably, \citet{fatemi2024finbert} independently demonstrated the value of synthetic data augmentation for financial sentiment, achieving 89\% on FPB by augmenting FPB training data with LLM-generated samples. Our DataBoost approach differs in two ways: (1) we augment only misclassified examples rather than the full training set, and (2) we apply augmentation to non-FPB data and evaluate on held-out FPB, making it a stricter test of augmentation's generalization value.
 
 \subsection{Self-Training: When More Data Hurts}
 
