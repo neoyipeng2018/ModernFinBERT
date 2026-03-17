@@ -36,7 +36,7 @@
 \maketitle
 
 \begin{abstract}
-We present a systematic empirical study applying ModernBERT, a recent modernized BERT architecture, to financial sentiment analysis. Through seven controlled experiments, we evaluate ModernBERT-base with LoRA fine-tuning across multiple evaluation protocols on the FinancialPhraseBank (FPB) benchmark. Our study makes several contributions: (1) we introduce a held-out evaluation protocol where FPB is entirely excluded from training, providing a stricter generalization test than standard in-domain splits; (2) we propose DataBoost, a targeted augmentation method that uses LLM-generated paraphrases of misclassified samples to improve performance; (3) we provide controlled comparisons between ModernBERT and BERT-base, finding that ModernBERT consistently outperforms BERT---leading by 1.09 percentage points in 10-fold CV ($p=0.093$) and by 7.84 points in the held-out setting on identical data; (4) we compare fine-tuned models against Claude Opus 4.6 equipped with a purpose-built financial sentiment skill on the same 723-sample test set, finding that the 149M-parameter fine-tuned model outperforms the skill-prompted LLM by 10.4 percentage points while being 800$\times$ cheaper; and (5) we provide a training data provenance audit revealing that the aggregated corpus has substantial class imbalance variation across sources, 68\% of news samples come from a single sub-domain (Canadian mining), and that the class distribution mismatch between training and evaluation data partially explains the held-out performance gap. Our results highlight the importance of evaluation protocol choice and proper experimental controls in financial NLP.
+We present a systematic empirical study applying ModernBERT, a recent modernized BERT architecture, to financial sentiment analysis. Through eight controlled experiments, we evaluate ModernBERT-base across multiple fine-tuning strategies and evaluation protocols on the FinancialPhraseBank (FPB) benchmark. Our study makes several contributions: (1) we introduce a held-out evaluation protocol where FPB is entirely excluded from training, providing a stricter generalization test than standard in-domain splits; (2) we propose DataBoost, a targeted augmentation method that uses LLM-generated paraphrases of misclassified samples to improve performance; (3) we provide controlled comparisons between ModernBERT and BERT-base, finding that ModernBERT consistently outperforms BERT---leading by 1.09 percentage points in 10-fold CV ($p=0.093$) and by 7.84 points in the held-out setting on identical data; (4) we compare fine-tuned models against Claude Opus 4.6 equipped with a purpose-built financial sentiment skill on the same 723-sample test set, finding that the 149M-parameter fine-tuned model outperforms the skill-prompted LLM by 10.4 percentage points while being 800$\times$ cheaper; (5) we provide a training data provenance audit revealing that the aggregated corpus has substantial class imbalance variation across sources, 68\% of news samples come from a single sub-domain (Canadian mining), and that the class distribution mismatch between training and evaluation data partially explains the held-out performance gap; and (6) we compare LoRA against full fine-tuning in a 2$\times$2 design with DataBoost, finding that LoRA's implicit regularization outperforms full fine-tuning on this small dataset---LoRA + DataBoost achieves 82.56\% versus 81.37\% for full fine-tuning + DataBoost on FPB---demonstrating that parameter-efficient methods provide a valuable inductive bias when training data is limited. Our results highlight the importance of evaluation protocol choice and proper experimental controls in financial NLP.
 \end{abstract}
 
 % ============================================================
@@ -48,7 +48,7 @@ Financial sentiment analysis---the task of classifying financial text as express
 
 Recently, \citet{warner2024modernbert} introduced ModernBERT, an updated encoder architecture incorporating rotary positional embeddings (RoPE), Flash Attention, and other modern design choices. ModernBERT achieves strong performance across standard NLP benchmarks, raising the question of whether these architectural improvements translate to domain-specific tasks like financial sentiment analysis.
 
-In this work, we conduct a systematic empirical study of ModernBERT for financial sentiment analysis. Rather than simply reporting a single accuracy number, we design seven complementary experiments that together provide a nuanced picture of model performance:
+In this work, we conduct a systematic empirical study of ModernBERT for financial sentiment analysis. Rather than simply reporting a single accuracy number, we design eight complementary experiments that together provide a nuanced picture of model performance:
 
 \begin{enumerate}[nosep]
     \item \textbf{Held-out evaluation} (NB01): Train on aggregated financial data \emph{excluding} FPB, then evaluate on FPB as a truly unseen benchmark.
@@ -58,6 +58,7 @@ In this work, we conduct a systematic empirical study of ModernBERT for financia
     \item \textbf{Architecture and baseline comparison} (NB05/NB09): Compare ModernFinBERT against published FinBERT models and BERT-base under controlled conditions.
     \item \textbf{Multi-seed robustness} (NB06): Repeat the held-out protocol with five random seeds.
     \item \textbf{Self-training} (NB07): Iterative pseudo-labeling on unlabeled financial tweets.
+    \item \textbf{LoRA vs.\ full fine-tuning} (NB12): Compare parameter-efficient and full fine-tuning in a 2$\times$2 design with DataBoost augmentation.
 \end{enumerate}
 
 A key finding is that evaluation protocol choice dramatically affects reported performance: the same ModernBERT model achieves 86.88\% under 10-fold CV on FPB but only 80.44\% when FPB is held out entirely. We argue that the held-out protocol provides a more realistic estimate of real-world generalization and that the financial NLP community should adopt it as a complementary evaluation standard.
@@ -131,7 +132,9 @@ We use \texttt{answerdotai/ModernBERT-base} (149M parameters) as our primary arc
 All fine-tuned models use LoRA with rank $r=16$, scaling factor $\alpha=32$, dropout 0.05, and bias set to ``none.'' For ModernBERT, we target modules \texttt{Wqkv}, \texttt{out\_proj}, \texttt{Wi}, and \texttt{Wo}. For BERT-base, we target the standard query, key, value, and output projection layers.
 
 \paragraph{Training Hyperparameters.}
-We use AdamW optimization with learning rate $2 \times 10^{-4}$, cosine learning rate schedule with 10 warmup steps, effective batch size 32 (batch size 8 with gradient accumulation factor 4), and FP16 mixed precision. Unless otherwise stated, we train for 10 epochs with early stopping based on validation loss.
+For LoRA experiments, we use AdamW optimization with learning rate $2 \times 10^{-4}$, cosine learning rate schedule with 10 warmup steps, effective batch size 32 (batch size 8 with gradient accumulation factor 4), and FP16 mixed precision. Unless otherwise stated, we train for 10 epochs with early stopping based on validation loss.
+
+For the full fine-tuning experiment (Section~\ref{sec:lora-vs-full}), we reduce the learning rate to $2 \times 10^{-5}$ and increase weight decay to 0.01, following standard practice for full fine-tuning of pre-trained transformers \citep{devlin2019bert}. We use warmup ratio 0.1 and effective batch size 16 (batch size 8 with gradient accumulation factor 2). Gradient checkpointing is enabled to manage memory requirements.
 
 \subsection{Evaluation Metrics}
 
@@ -294,6 +297,7 @@ ProsusAI/finbert$^\dagger$ & In-domain & 0.8896 & 0.8825 & 0.9717 & 0.9625 \\
 finbert-tone & Zero-shot & 0.7914 & 0.7530 & 0.9152 & 0.8939 \\
 \midrule
 ModernBERT + LoRA & Held-out & 0.8093 & 0.7793 & 0.9329 & --- \\
+ModernBERT + LoRA + DataBoost & Held-out & 0.8256 & 0.8052 & 0.9514 & 0.9417 \\
 BERT-base + LoRA & Held-out & 0.7309 & 0.6051 & 0.8366 & --- \\
 \midrule
 $\Delta$ (MB $-$ BERT) & & +0.0784 & +0.1742 & +0.0963 & \\
@@ -401,6 +405,38 @@ Self-training did not improve over the DataBoosted teacher: validation accuracy 
 \paragraph{Analysis.}
 The failure of self-training is informative. The near-perfect confidence scores suggest the teacher's predictions on the unlabeled pool were highly polarized, producing pseudo-labels that reinforced existing decision boundaries rather than expanding them. Furthermore, the domain mismatch between the unlabeled data (informal financial tweets) and the evaluation data (formal press-release-style FPB sentences) likely diluted the training signal. This result highlights a known limitation of self-training: it is most effective when unlabeled data comes from the same domain as the target task \citep{xie2020self}.
 
+\subsection{Experiment 8: LoRA vs.\ Full Fine-Tuning with DataBoost}
+\label{sec:lora-vs-full}
+
+\paragraph{Motivation.}
+All preceding experiments use LoRA for parameter-efficient fine-tuning. However, ModernBERT's fused QKV projection (\texttt{Wqkv}) means a single LoRA adapter of rank $r=16$ is shared across query, key, and value---effectively providing $\sim$5.3 rank per component---whereas BERT's separate projections each receive the full rank. Full fine-tuning eliminates this asymmetry entirely and also removes the capacity constraint imposed by low-rank updates. We ask: does full fine-tuning improve performance, and does DataBoost remain effective under full fine-tuning?
+
+\paragraph{Protocol.}
+We train ModernBERT-base with \emph{all} 149M parameters unfrozen (no LoRA) using hyperparameters adapted for full fine-tuning: learning rate $2 \times 10^{-5}$, weight decay 0.01, warmup ratio 0.1, and effective batch size 16. We run two conditions: (1) baseline training on the aggregated dataset, and (2) training on the same data augmented with the 410 VS-CoT DataBoost samples from Experiment~2. This produces a 2$\times$2 comparison: \{LoRA, Full FT\} $\times$ \{Baseline, DataBoosted\}.
+
+\paragraph{Results.}
+Table~\ref{tab:lora-vs-full} presents the complete 2$\times$2 comparison.
+
+\begin{table}[h]
+\centering
+\caption{LoRA vs.\ full fine-tuning, with and without DataBoost augmentation. All models are ModernBERT-base trained on the aggregated corpus (FPB excluded). LoRA results from Experiments~1 and~7; full FT results from this experiment.}
+\label{tab:lora-vs-full}
+\begin{tabular}{llrcccc}
+\toprule
+\textbf{Fine-tuning} & \textbf{Data} & \textbf{Params} & \multicolumn{2}{c}{\textbf{FPB 50agree}} & \multicolumn{2}{c}{\textbf{FPB allAgree}} \\
+\cmidrule(lr){4-5} \cmidrule(lr){6-7}
+& & & Acc & F1 & Acc & F1 \\
+\midrule
+LoRA $r{=}16$ & Baseline & 1.1M & 0.8091 & 0.7810 & 0.9324 & 0.9192 \\
+LoRA $r{=}16$ & DataBoosted & 1.1M & \textbf{0.8256} & \textbf{0.8052} & \textbf{0.9514} & \textbf{0.9417} \\
+Full FT & Baseline & 149M & 0.7722 & 0.6937 & 0.8900 & 0.8489 \\
+Full FT & DataBoosted & 149M & 0.8137 & 0.7977 & 0.9355 & 0.9226 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three findings emerge. First, \textbf{LoRA outperforms full fine-tuning} across all conditions: by +3.69 points on the baseline and +1.19 points with DataBoost on FPB \texttt{sentences\_50agree}. With only 8,643 training samples, full fine-tuning of 149M parameters overfits despite the reduced learning rate and higher weight decay, while LoRA's low-rank constraint acts as an effective regularizer. Second, \textbf{DataBoost is even more impactful under full fine-tuning}: the augmentation yields +4.15 percentage points accuracy and +10.4 points macro F1 under full FT, compared to +1.65 points accuracy under LoRA. The augmented data compensates for full FT's greater overfitting tendency by providing additional decision-boundary training signal. Third, \textbf{LoRA + DataBoost remains the best overall configuration} at 82.56\% on FPB \texttt{sentences\_50agree}, confirming that parameter-efficient fine-tuning provides a valuable inductive bias on small datasets.
+
 % ============================================================
 \section{Analysis and Discussion}
 \label{sec:discussion}
@@ -449,6 +485,8 @@ The use of Verbalized Sampling (VS-CoT) for paraphrase generation is a key desig
 
 The disproportionate F1 improvement (7.8 points) relative to accuracy improvement (2.9 points) confirms that DataBoost primarily helps minority classes. This is valuable in financial applications where detecting negative sentiment (e.g., risk signals) is often more important than correctly classifying the dominant neutral class.
 
+The 2$\times$2 comparison in Experiment~8 (Table~\ref{tab:lora-vs-full}) reveals that DataBoost's impact is \emph{amplified} under full fine-tuning: +4.15 points accuracy and +10.4 points F1 under full FT, versus +1.65 points accuracy under LoRA. This suggests that DataBoost is most valuable precisely when the model is most prone to overfitting---the augmented boundary examples act as a form of targeted regularization, providing the training signal that full FT's unconstrained parameter space needs to learn correct decision boundaries.
+
 Notably, \citet{fatemi2024finbert} independently demonstrated the value of synthetic data augmentation for financial sentiment, achieving 89\% on FPB by augmenting FPB training data with LLM-generated samples. Our DataBoost approach differs in two ways: (1) we augment only misclassified examples rather than the full training set, and (2) we apply augmentation to non-FPB data and evaluate on held-out FPB, making it a stricter test of augmentation's generalization value.
 
 \subsection{Self-Training: When More Data Hurts}
@@ -468,7 +506,7 @@ This suggests that for self-training to succeed in financial NLP, practitioners 
     \item \textbf{Single benchmark}: While FPB is the standard financial sentiment benchmark, evaluating on additional datasets (SemEval Financial, analyst reports) would strengthen our conclusions.
     \item \textbf{Base models only}: We evaluate only base-sized models (110--149M parameters). Results may differ with large variants.
     \item \textbf{English only}: All experiments use English financial text. Financial NLP in other languages remains unexplored.
-    \item \textbf{LoRA only}: Full fine-tuning could yield different relative performance between architectures. ModernBERT's fused QKV projections receive effectively lower per-component LoRA rank than BERT's separate projections, and full fine-tuning would eliminate this asymmetry.
+    \item \textbf{Single full fine-tuning configuration}: Our full fine-tuning experiment (Experiment~8) uses a single hyperparameter setting. The learning rate, weight decay, and other hyperparameters were not extensively tuned for full FT, and a more thorough search could narrow the gap with LoRA.
     \item \textbf{Narrow sub-domain in training data}: Source~4 (financial news) is 68\% Canadian mining announcements (TSX-V listings, drill results, assay values), making it a narrow sub-domain rather than representative financial news. This may inflate apparent generalization to mining text while limiting transfer to other news types.
     \item \textbf{Training data composition}: The aggregated training corpus combines heterogeneous sources with text lengths spanning 15 to 161 median words and NEGATIVE class rates ranging from 3.4\% to 13.9\%. The interaction between source diversity, class imbalance, and model architecture deserves further study.
     \item \textbf{Single training data size}: The controlled BERT vs.\ ModernBERT comparison uses only 8,643 training samples. A sample efficiency study across multiple dataset sizes would reveal how the architectural advantage changes with data scale.
@@ -480,13 +518,14 @@ This suggests that for self-training to succeed in financial NLP, practitioners 
 \label{sec:conclusion}
 % ============================================================
 
-We have presented a systematic study of ModernBERT for financial sentiment analysis, encompassing seven controlled experiments. Our key findings are:
+We have presented a systematic study of ModernBERT for financial sentiment analysis, encompassing eight controlled experiments. Our key findings are:
 
 \begin{enumerate}[nosep]
     \item \textbf{Evaluation protocol matters}: The 6.4-point gap between in-domain CV and held-out evaluation highlights the need for standardized, rigorous evaluation in financial NLP.
     \item \textbf{ModernBERT outperforms BERT}: Controlled experiments on verified-clean data show ModernBERT consistently outperforms BERT-base, by +7.84 points in the held-out setting and +1.09 points in cross-validation.
-    \item \textbf{DataBoost works}: Targeted LLM augmentation of misclassified examples yields efficient improvements, particularly for minority classes.
+    \item \textbf{DataBoost works}: Targeted LLM augmentation of misclassified examples yields efficient improvements, particularly for minority classes, with amplified impact under full fine-tuning (+4.15pp accuracy, +10.4pp F1).
     \item \textbf{Fine-tuning beats skill-prompted LLMs}: On the same 723-sample test set, ModernFinBERT outperforms Claude Opus 4.6 with a purpose-built financial sentiment skill by 10.4 percentage points, while being 800$\times$ cheaper and 500--1000$\times$ faster.
+    \item \textbf{LoRA acts as a regularizer}: On small datasets, LoRA's low-rank constraint outperforms full fine-tuning (82.56\% vs.\ 81.37\% with DataBoost), demonstrating that parameter-efficient methods provide beneficial inductive bias, not just computational savings.
     \item \textbf{Self-training requires domain match}: Iterative pseudo-labeling on out-of-domain tweets did not improve performance, highlighting the importance of domain-matched unlabeled data for semi-supervised methods.
 \end{enumerate}
 
