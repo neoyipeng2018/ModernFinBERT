@@ -1,287 +1,260 @@
-# ModernFinBERT: Deep Analysis & Critical Assessment
+# Research Report: Full Fine-Tuning + DataBoost for FPB Performance
 
-This report documents a thorough analysis of the ModernFinBERT paper, its experiments, supporting data, and the gaps between what is claimed and what the evidence supports.
+## Executive Summary
 
----
+**There is no notebook that combines full fine-tuning (all parameters unfrozen) with DataBoost augmentation.** These two techniques exist in separate, independent notebooks:
 
-## 1. What the Paper Does
+- **`02A_databoost_vs.ipynb`** — DataBoost augmentation, but uses **LoRA r=16** (not full fine-tuning)
+- **`09e_full_finetune.ipynb`** (archived) — Full fine-tuning (all params), but uses the **base dataset only** (no DataBoost)
 
-The paper presents seven experiments evaluating ModernBERT-base (149M params) with LoRA fine-tuning for three-class financial sentiment analysis (POSITIVE / NEGATIVE / NEUTRAL) on the FinancialPhraseBank (FPB) benchmark.
-
-**Training data**: 8,643 samples from `neoyipeng/financial_reasoning_aggregated`, sourced from four domains (earnings call narratives, press releases/news, earnings call Q&A, financial tweets). All FPB samples (source 5) are excluded from training.
-
-**Evaluation**: Primarily on FPB `sentences_50agree` (4,846 samples) and `sentences_allAgree` (2,264 samples).
-
-**Five claimed contributions:**
-1. Held-out evaluation protocol (FPB excluded from training)
-2. DataBoost targeted augmentation (+2.9pp accuracy, +7.8pp F1)
-3. ModernBERT outperforms BERT-base (+7.84pp held-out, +1.09pp CV)
-4. Fine-tuned model outperforms Claude Opus 4.6 by 10.4pp
-5. Training data provenance audit
+This is a notable gap. The DataBoost notebook (02A) is the best-performing setup in the paper for FPB test performance, but it operates with LoRA. The full fine-tuning notebook (09e) was designed to diagnose whether the BERT vs. ModernBERT gap was a LoRA artifact, not to maximize FPB performance. No experiment combines both.
 
 ---
 
-## 2. Experiment-by-Experiment Summary
+## Deep Analysis of Each Notebook
 
-### Exp 1: Held-Out Evaluation (Table 2)
+### 1. DataBoost Notebook (`02A_databoost_vs.ipynb`) — The Best Setup for FPB
 
-ModernBERT trained on aggregated data (FPB excluded), evaluated on FPB.
+This is the most important notebook for FPB test performance. It implements a four-stage pipeline:
 
-| Eval Set | Accuracy | Macro F1 |
-|---|---|---|
-| FPB 50agree | 80.44% | 77.05% |
-| FPB allAgree | 92.98% | 91.48% |
-| Aggregated test | 77.71% | 69.58% |
+#### Stage 1: Data Preparation
+- **Dataset**: `neoyipeng/financial_reasoning_aggregated` from HuggingFace
+- **Filtering**: Sentiment task only, FPB (source 5) entirely excluded
+- **Training set size**: ~8,643 samples after filtering
+- **Label encoding**: One-hot vectors via `np.eye(3)`, mapping `NEGATIVE→0, NEUTRAL/MIXED→1, POSITIVE→2`
+- **Key specificity**: Labels are stored as **soft one-hot vectors** (e.g., `[1,0,0]`), not integer class indices. This means the loss function computes against a distribution, not a hard target — but since these are one-hot, it's functionally equivalent to cross-entropy with hard labels.
 
-### Exp 2: DataBoost (Table 3)
+#### Stage 2: Baseline Model Training
+The `train_model()` function is reused for both baseline and boosted training. Its specifics:
 
-82 validation errors mined, 246 VS-CoT paraphrases generated, model retrained.
+- **Architecture**: `answerdotai/ModernBERT-base` (149M total params)
+- **LoRA config**: r=16, alpha=32, dropout=0.05, bias="none"
+  - **Target modules**: `["Wqkv", "out_proj", "Wi", "Wo"]`
+  - These are ModernBERT-specific: `Wqkv` is the **fused QKV projection** (one matrix for query+key+value), `out_proj` is the attention output, `Wi`/`Wo` are the GeGLU FFN layers
+  - **Critical detail**: Because ModernBERT fuses Q/K/V into a single `Wqkv` matrix, a LoRA r=16 adapter on it effectively gives ~r=5.3 per component (Q, K, V), while BERT's separate `query`/`key`/`value` each get full r=16. This is a known asymmetry acknowledged in the paper's Limitations section.
+- **Optimizer**: AdamW with lr=2e-4, weight_decay=0.001, cosine schedule
+- **Batch config**: batch_size=8, gradient_accumulation=4 (effective batch 32)
+- **Warmup**: 10 steps (not ratio-based)
+- **Epochs**: 10, with early stopping on validation loss (`load_best_model_at_end=True`)
+- **Precision**: FP16 mixed precision
+- **Attention**: SDPA (Scaled Dot-Product Attention, PyTorch native)
+- **Gradient checkpointing**: Enabled (saves memory, trades compute)
+- **Seed**: 3407
 
-| Model | Accuracy | Macro F1 |
-|---|---|---|
-| Baseline | 77.29% | 66.60% |
-| DataBoosted | 80.21% | 74.43% |
-| Delta | **+2.92pp** | **+7.84pp** |
+#### Stage 3: Error Mining
+After baseline training, inference runs on the **validation set** (not test, not FPB):
+- Collects all samples where `pred != true_label`
+- **Result**: 82 misclassified samples out of ~480 validation samples (17.1% error rate)
+- Error breakdown typically shows POSITIVE→NEUTRAL and NEUTRAL→POSITIVE as dominant confusion patterns
+- Errors saved to `validation_errors.csv`
 
-Evaluated on aggregated test set (480 samples), not FPB.
+#### Stage 4: Verbalized Sampling Augmentation
+This is where 02A differs from the original 02. Instead of calling the Claude API at runtime:
 
-### Exp 3: Claude Comparison (Table 4)
+- **Pre-generated data**: The augmentation data is **embedded directly in the notebook** as a base64-encoded gzip blob (`VS_DATA_B64`). This makes the notebook self-contained and reproducible without API access.
+- **Generation method**: VS-CoT (Verbalized Sampling with Chain-of-Thought), based on Zhang et al. 2025
+- **How VS-CoT works**:
+  1. For each misclassified sample, Claude analyzes *why* a classifier would confuse the predicted label with the true label
+  2. Identifies distinguishing linguistic cues for the correct sentiment
+  3. Plans coverage across financial sub-domains (earnings calls, analyst notes, SEC filings, social media, press releases, etc.)
+  4. Generates **k=5 candidate texts with explicit probability estimates** — this is the key innovation over simple paraphrasing, which mode-collapses to near-identical outputs
+  5. Each candidate spans a different financial register to maximize diversity
+- **Volume**: 82 seed errors × ~3 paraphrases each = **246 augmented samples** (some seeds get more, some fewer)
+- **Data structure**: Each augmented sample has: `text`, `label` (int), `confusion_type` (e.g., "POSITIVE→NEUTRAL")
 
-Both models on same 723-sample test set (243 FPB + 480 non-FPB).
+#### Stage 5: Augmented Retraining
+- Original training data (~8,643) + VS augmented data (246) = ~8,889 samples
+- Augmentation ratio: ~2.8% of original training size
+- **Same `train_model()` function** is called — identical hyperparameters, fresh model initialization
+- **Key design choice**: The model is trained from scratch on augmented data, NOT fine-tuned further from the baseline checkpoint
 
-| Model | Accuracy | Macro F1 |
-|---|---|---|
-| ModernFinBERT | 83.13% | 79.57% |
-| Claude Opus 4.6 + skill | 72.75% | 70.33% |
+#### Stage 6: Evaluation on Three Test Sets
+1. **Validation set**: Measures whether augmentation fixed the specific errors it targeted
+2. **FPB 50agree/allAgree**: The held-out benchmark (model never sees FPB during training)
+3. **Aggregated test set**: In-distribution performance
 
-### Exp 4: 10-Fold CV (Table 5)
+#### Reported Results (from paper, Table 5 — Self-Training section gives the clearest numbers):
+| Stage | FPB 50agree | FPB allAgree | Agg Test |
+|-------|-------------|--------------|----------|
+| Baseline | 80.91% | 93.24% | 79.79% |
+| **DataBoosted** | **82.56%** | **95.14%** | **80.83%** |
+| Delta | +1.65pp | +1.90pp | +1.04pp |
 
-Stratified 10-fold CV on FPB 50agree (in-domain).
+On the isolated DataBoost experiment (Table 3, aggregated test only):
+- Accuracy: +2.92pp (77.29% → 80.21%)
+- Macro F1: +7.84pp (66.60% → 74.43%)
 
-Mean accuracy: **86.88% +/- 0.96%**, Macro F1: 85.40% +/- 1.39%
-
-### Exp 5: Architecture Comparison (Tables 6-7)
-
-Held-out (identical training data):
-- ModernBERT: 80.93% on FPB 50agree
-- BERT-base: 73.09% on FPB 50agree
-- Delta: **+7.84pp**
-
-Head-to-head 10-fold CV on FPB:
-- ModernBERT: 86.36% mean
-- BERT-base: 85.27% mean
-- Delta: **+1.09pp** (p=0.093)
-
-### Exp 6: Multi-Seed Robustness (Table 8)
-
-5 seeds (3407, 42, 123, 456, 789):
-- FPB 50agree: 80.44% +/- 0.89%
-- FPB allAgree: 92.98% +/- 0.25%
-
-### Exp 7: Self-Training (Table 9)
-
-| Stage | FPB 50agree | FPB allAgree |
-|---|---|---|
-| Baseline | 80.91% | 93.24% |
-| DataBoosted | **82.56%** | **95.14%** |
-| SelfTrain R1 | 80.54% | 94.08% |
-
-Self-training degraded performance; early stopping triggered.
+**The F1 gain is disproportionately large**, meaning DataBoost primarily helps minority classes (NEGATIVE, POSITIVE).
 
 ---
 
-## 3. Blindspots, Flaws & Weaknesses
+### 2. Full Fine-Tuning Notebook (`09e_full_finetune.ipynb`) — Archived
 
-### 3.1 Multi-Seed Means Are Suspiciously Identical to Single-Seed Results
+This notebook was designed to answer one specific question: **Is the BERT > ModernBERT gap under LoRA caused by the fused QKV asymmetry, or by pre-training differences?**
 
-Table 2 (Exp 1, single seed 3407): FPB 50agree = 0.8044, allAgree = 0.9298, agg test = 0.7771.
+#### Key Differences from the DataBoost Setup
 
-Table 8 (Exp 6, 5-seed mean): FPB 50agree = 0.8044 +/- 0.0089, allAgree = 0.9298 +/- 0.0025, agg test = 0.7771 +/- 0.0053.
+| Aspect | 02A (DataBoost) | 09e (Full FT) |
+|--------|----------------|---------------|
+| Parameters trained | ~1.1M (LoRA) | ~149M (all) |
+| Augmented data | Yes (246 VS samples) | No |
+| Models compared | ModernBERT only | BERT-base vs ModernBERT |
+| Batch config | bs=8, grad_accum=4 | bs=8, grad_accum=2 |
+| Warmup | 10 steps | 0.1 ratio |
+| Learning rate | 2e-4 | 2e-5 (10x lower) |
+| Weight decay | 0.001 | 0.01 (10x higher) |
+| Seed | 3407 | 42 |
+| Optimizer | AdamW | AdamW |
+| Scheduler | Cosine | Cosine |
+| Epochs | 10 | 10 |
 
-All three means match the single-seed result to **four decimal places**. With standard deviations of ~0.005-0.009 across 5 seeds, the probability that the mean exactly equals one specific seed's value to 4 decimals on all three metrics simultaneously is vanishingly small. This either means:
-- The Exp 1 numbers were updated to match the multi-seed means (the original single-seed result was slightly different)
-- The multi-seed experiment has a bug (e.g., same seed used 5 times)
-- Coincidence (extremely unlikely across 3 metrics)
+**Critical hyperparameter differences**: Full FT uses lr=2e-5 (standard for full fine-tuning of transformers) vs. 2e-4 for LoRA. Weight decay is 0.01 vs. 0.001. Effective batch size is 16 vs. 32. These are appropriate adjustments for full fine-tuning but mean the results are not directly comparable to 02A beyond architecture conclusions.
 
-This is the paper's most serious credibility issue. It should be addressed transparently.
+#### Full FT Results
+The notebook compares against prior LoRA results:
+```
+Config                        Params    FPB 50agree  FPB allAgree
+BERT + LoRA r=16 (NB05)      ~0.89M    95.19%       99.16%
+BERT + Full FT (this exp)    ~110M     [computed]   [computed]
+ModernBERT + LoRA r=16       ~1.1M     91.19%       99.03%
+ModernBERT + Full FT         ~149M     [computed]   [computed]
+```
 
-### 3.2 Number Inconsistencies Across "Same Protocol" Experiments
+The notebook's diagnostic logic:
+- If gap < 1.5pp under full FT → LoRA asymmetry was the main cause
+- If gap > 2pp under full FT → Pre-training alignment is the cause
+- Otherwise → Both factors contribute
 
-The held-out protocol (train on aggregated data excluding FPB, evaluate on FPB) is used in Exp 1, Exp 5, Exp 6, and Exp 7, but yields different numbers each time:
-
-| Experiment | FPB 50agree Acc | Notes |
-|---|---|---|
-| Exp 1 (Table 2) | 80.44% | Single seed 3407 |
-| Exp 5 (Table 6) | 80.93% | NB09c, same protocol |
-| Exp 6 (Table 8) | 80.44% +/- 0.89% | 5-seed mean |
-| Exp 7 baseline (Table 9) | 80.91% | NB07, same protocol |
-
-The spread is 80.44% to 80.93% — a 0.49pp range. While seed variation explains some of this (~0.89% std from Exp 6), the paper presents these as consistent, interchangeable results. The reader has no way to know whether the differences are seed effects, minor protocol variations, or bugs. The paper should use a single canonical result with error bars, not four slightly different point estimates.
-
-### 3.3 The p=0.093 Problem
-
-The head-to-head CV comparison (Table 7) reports p=0.093, which does **not** meet the conventional p<0.05 significance threshold. Yet the paper states "ModernBERT consistently outperforms BERT-base" (Abstract, Discussion) and frames the +1.09pp as a confirmed finding.
-
-The paper should either:
-- Acknowledge this is marginal evidence (p<0.10 but p>0.05)
-- Report it as a trend, not a confirmed result
-- Apply a correction for multiple comparisons (the paper runs many tests)
-
-The held-out comparison (+7.84pp) is more convincing, but is a single-seed result confounded by LoRA asymmetry (see 3.6).
-
-### 3.4 DataBoost Evaluated on In-Distribution Data
-
-Table 3 reports DataBoost results on the "aggregated test set (480 samples)" — same source distribution as training data. The headline numbers (+2.9pp accuracy, +7.8pp F1) come from this in-distribution evaluation.
-
-The FPB-specific impact is buried in Table 9 (self-training progression): baseline 80.91% to DataBoosted 82.56% = **+1.65pp on FPB**. This is a meaningful result but considerably less impressive than the +2.9pp headline. The paper should lead with the FPB result since FPB is the benchmark used throughout.
-
-Additionally, the +7.8pp macro F1 improvement is tested only on 480 samples with no confidence interval or significance test. Given the small sample size, this could include substantial noise.
-
-### 3.5 Claude Comparison Fairness Issues
-
-The paper claims ModernFinBERT outperforms Claude Opus 4.6 by 10.4pp, but several design choices favor the fine-tuned model:
-
-**a) Test set composition**: The 723-sample test set is 66% non-FPB data (478 samples from the same sources as training: earnings calls, tweets, press releases, mining). ModernFinBERT was fine-tuned on this distribution; Claude has never seen it. The per-subset breakdown reveals the asymmetry:
-- FPB held-out: gap = 4.9pp (fairer comparison)
-- Non-FPB in-distribution: gap = 13.0pp (favors fine-tuned model)
-
-The overall 10.4pp headline number is inflated by the in-distribution advantage.
-
-**b) Skill truncation**: The BENCHMARK.md explicitly states "agents received a condensed version of the skill rules, not the full SKILL.md with examples." The full skill definition includes 5 worked examples and detailed edge-case handling that were omitted. This handicaps Claude.
-
-**c) No confidence intervals**: The Claude evaluation is a single stochastic run. LLM outputs are non-deterministic — running the same evaluation 5 times could yield substantially different accuracy. The paper provides no CI.
-
-**d) Cost analysis omits training costs**: The paper says fine-tuning is "800x cheaper" per inference but ignores the cost of generating training data (LLM labels for 8,643 samples), VS-CoT augmentation (Claude API calls), GPU time for fine-tuning, and experiment iteration. The total project cost likely exceeds the Claude inference cost.
-
-### 3.6 LoRA Asymmetry Confounds the Architecture Comparison
-
-ModernBERT's fused `Wqkv` module receives a single rank-16 LoRA adapter shared across Q, K, and V projections, yielding an effective per-component rank of ~5.3 (16/3). BERT-base has separate Q, K, V projections, each receiving a full rank-16 adapter.
-
-This means BERT gets ~3x more LoRA capacity per attention component than ModernBERT. The +7.84pp "architecture advantage" on held-out data may be partially or largely a LoRA configuration artifact — ModernBERT might simply be under-parameterized.
-
-The paper acknowledges this in Limitations but still frames the +7.84pp as an architecture finding. The NB09e full fine-tuning experiment was designed to resolve this (by removing LoRA entirely) but was never executed. Without this critical ablation, the architecture claim is confounded.
-
-### 3.7 Training Labels Are LLM-Generated With Known Biases
-
-All non-FPB training labels (100% of the 8,643 training samples) are LLM-generated via prompted classification. The provenance audit reveals systematic biases:
-
-| Source | NEG% | FPB (human) NEG% | Delta |
-|---|---|---|---|
-| Source 3 (earnings narrative) | 11.3% | 12.5% | -1.2pp |
-| Source 4 (press releases) | 3.4% | 12.5% | **-9.1pp** |
-| Source 8 (earnings Q&A) | 7.9% | 12.5% | -4.6pp |
-| Source 9 (tweets) | 13.9% | 12.5% | +1.4pp |
-
-The model learns from LLM-generated labels (with a strong positive bias in Source 4) and is evaluated against human labels. This creates a systematic training-evaluation mismatch. The paper notes this in the data provenance section but doesn't analyze the impact — e.g., what would happen if Source 4 were removed or re-labeled?
-
-### 3.8 The HuggingFace Model vs. Experimental Models
-
-The paper states "The ModernFinBERT model is available at `neoyipeng/ModernFinBERT-base` on HuggingFace." The BENCHMARK.md notes that a "non-blind evaluation (where ground truth was visible during classification) scored 95.7% accuracy" with this model.
-
-95.7% on FPB is far above the 80.44% reported in the paper's held-out experiments, strongly suggesting the uploaded model was trained on FPB data (in-domain). The paper doesn't clarify which model checkpoint is uploaded or how it differs from the experimental models. Users downloading `neoyipeng/ModernFinBERT-base` may get a model with very different characteristics than what the paper evaluates.
-
-The NB03 (Claude comparison) experiment uses a model achieving 84.36% on the 243 FPB held-out samples. This doesn't match NB01's 80.44% on all 4,846 FPB samples, suggesting a different checkpoint or a test-set selection effect (the 243-sample FPB subset may be non-representative of the full FPB).
-
-### 3.9 Missing Comparisons With Recent Work
-
-The paper compares against models from 2019-2020 (ProsusAI/finbert at 86%, FinBERT-FinVocab at 87.2%). The reference benchmarks file includes more recent results not cited in the paper:
-
-| Model | FPB 50agree Acc | Year |
-|---|---|---|
-| FinBERT-IJCAI | 94% | 2020 |
-| finbert-lc | 89% | 2024 |
-
-These make ModernFinBERT's 86.88% CV result look less impressive. The paper should discuss where it stands relative to current SOTA, not just 5-year-old baselines.
-
-### 3.10 FPB Is a 2014 Dataset
-
-The entire evaluation rests on FinancialPhraseBank, published in 2014. Financial language has evolved significantly (crypto terminology, SPACs, COVID-era language, ESG discourse). The paper's "single benchmark" limitation is acknowledged but this is a deeper problem — strong FPB results may not indicate strong real-world financial sentiment analysis in 2026.
-
-### 3.11 No Error Analysis
-
-The paper contains no confusion matrices, no qualitative error examples, no failure mode analysis. The per-class F1 in Table 5 (NB04) is the only class-level analysis. We know from the benchmark results that the POSITIVE/NEUTRAL boundary is the primary confusion source, but the paper never discusses:
-- What kinds of sentences does ModernFinBERT get wrong?
-- Are errors systematic (e.g., always misclassifying hedged positive language as neutral)?
-- How do errors differ between ModernBERT and BERT?
-
-### 3.12 Self-Training Used Poorly Matched Data
-
-The self-training experiment (Exp 7) used financial tweets as unlabeled data. Tweets are informal (median 15 words), while FPB consists of formal press-release sentences (median 21 words). The paper draws the broad conclusion "self-training requires domain match" from this single experiment with obviously mismatched data. The experiment would be more informative if it also tried domain-matched unlabeled data (e.g., financial news headlines, press release sentences from non-FPB sources).
-
-### 3.13 No Ablations
-
-The paper tests a single configuration (LoRA r=16, lr=2e-4, 10 epochs, max_length=512) across most experiments. Missing ablations:
-- **LoRA rank**: Only r=16 tested (NB09B showed r=48 hurts, but r=8 or r=32 not explored)
-- **Training data composition**: What if Source 8 (truncated earnings calls, 69.12% accuracy on test) were removed?
-- **Augmentation method**: Is VS-CoT actually better than simple paraphrasing? NB02 and NB02A test different methods but aren't compared head-to-head
-- **Learning rate**: No sensitivity analysis
-- **Max sequence length**: Source 8 (median 161 words) is truncated at 512 tokens. Would 1024 tokens help?
-
-### 3.14 Source 8 Truncation Is Unaddressed
-
-The provenance audit reveals Source 8 (earnings call Q&A, 2,440 training samples = 28% of training data) has median 161 words and max 2,596 words. A substantial fraction exceeds the 512-token limit and is silently truncated during training. The model learns from incomplete texts for this entire source.
-
-The per-text-type results confirm the impact: ModernFinBERT achieves only 69.12% on earnings calls (vs 87-88% on other text types). Rather than just noting this as a limitation, the paper could test whether removing Source 8 or increasing max_length improves performance.
+**Note**: This notebook is in `archive/not_in_paper/`, meaning its results were not included in the final paper. The paper acknowledges the LoRA asymmetry as a limitation but doesn't resolve it experimentally.
 
 ---
 
-## 4. What the Paper Does Well
+### 3. Original DataBoost Notebook (`02_databoost.ipynb`) — Archived
 
-Despite the issues above, several aspects deserve credit:
+The predecessor to 02A. Key differences:
+- Uses the **Anthropic API at runtime** to generate paraphrases (requires API key and credits)
+- Has `PARAPHRASES_PER_SAMPLE = 3` as a configurable parameter
+- Generates paraphrases on-the-fly rather than using pre-embedded data
+- Also evaluates baseline on FPB *before* deleting the model (to measure delta on same test)
+- Evaluates on aggregated test set as well
 
-1. **Held-out evaluation protocol**: Most financial NLP papers evaluate in-domain. The held-out protocol is genuinely more rigorous and the 6.4pp protocol gap is an important finding for the field.
+The prompt template (from CSV files in `data/raw/`):
+```
+HEADLINE: [original misclassified text]
 
-2. **Data provenance audit**: Documenting training data composition, annotation methods, and biases is rare in financial NLP. The provenance table (Table 1) is a genuine contribution.
+TASK: Create another headline that is similar in theme, but different
+in terms of entities mentioned and the same in sentiment ([LABEL]).
+If the sentiment is ambiguous, make it more clear. Modify the headline
+such that a financial analyst would 100% certainly classify the
+headline sentiment as [LABEL].
+```
 
-3. **Negative result reporting**: The self-training failure (Exp 7) is honestly reported with a thoughtful analysis of why it failed (domain mismatch + overconfident teacher). Many papers would simply omit a negative result.
-
-4. **Deduplication verification**: The three-layer contamination check (exact, fuzzy, semantic) before the architecture comparison is methodologically careful.
-
-5. **Breadth of experiments**: Seven experiments with consistent methodology provide a more nuanced picture than a single accuracy number.
-
-6. **Reproducibility commitment**: Public code, notebooks, and model weights support reproducibility (though the model checkpoint confusion needs resolution).
-
----
-
-## 5. Key Numbers Cross-Reference
-
-For transparency, here is every reported accuracy on FPB 50agree with its source:
-
-| Source | Model | FPB 50agree Acc | Context |
-|---|---|---|---|
-| Table 2 (Exp 1) | ModernBERT held-out | 80.44% | Single seed 3407 |
-| Table 5 (Exp 4) | ModernBERT 10-fold CV | 86.88% mean | In-domain |
-| Table 6 (Exp 5) | ModernBERT held-out | 80.93% | NB09c, different seed? |
-| Table 6 (Exp 5) | BERT-base held-out | 73.09% | Same data as above |
-| Table 7 (Exp 5) | ModernBERT CV | 86.36% mean | Head-to-head |
-| Table 7 (Exp 5) | BERT-base CV | 85.27% mean | Head-to-head |
-| Table 8 (Exp 6) | ModernBERT multi-seed | 80.44% +/- 0.89% | 5 seeds |
-| Table 9 (Exp 7) | Baseline | 80.91% | NB07 |
-| Table 9 (Exp 7) | DataBoosted | 82.56% | Best overall held-out |
-| Table 9 (Exp 7) | SelfTrain R1 | 80.54% | Degraded |
-| Table 4 (Exp 3) | ModernFinBERT | 83.13% overall | 723-sample mixed test |
-| fair_comparison | ModernFinBERT on FPB subset | 84.36% | 243 FPB samples only |
-| ProsusAI/finbert | In-domain | 88.96% | Trained on FPB |
-| finbert-tone | Zero-shot | 79.14% | No FPB training |
-
-Notable: the "held-out" accuracy ranges from 80.44% to 80.93% across experiments claiming identical protocol.
+This is **not** the VS-CoT approach — it's simple paraphrasing. The 02A notebook upgraded to VS-CoT for better diversity.
 
 ---
 
-## 6. Recommendations for Strengthening the Paper
+## The Training Data Pipeline (Shared Across Notebooks)
 
-1. **Resolve the multi-seed identity**: Explain why Table 2 and Table 8 means match exactly, or re-run with verified distinct seeds and report the actual single-seed result separately.
+### Dataset: `neoyipeng/financial_reasoning_aggregated`
 
-2. **Use a canonical held-out number**: Pick one result with error bars (the multi-seed mean) and use it consistently. Acknowledge when other experiments produce slightly different numbers and explain why.
+| Source | Domain | N_train | NEG% | NEU% | POS% | Median Words | Annotation |
+|--------|--------|---------|------|------|------|-------------|------------|
+| 3 | Earnings calls (narrative) | 462 | 11.3 | 53.4 | 35.3 | 32 | LLM |
+| 4 | Press releases / news | 1,557 | 3.4 | 58.7 | 37.9 | 60 | LLM |
+| 5 | **FPB (excluded)** | 4,361 | 12.5 | 59.4 | 28.1 | 21 | Human |
+| 8 | Earnings calls (Q&A) | 2,440 | 7.9 | 57.7 | 34.4 | 161 | LLM |
+| 9 | Financial tweets | 4,184 | 13.9 | 68.4 | 17.6 | 15 | LLM |
 
-3. **Lead with FPB DataBoost results**: Report the +1.65pp on FPB (from Table 9) as the primary DataBoost finding, not the +2.9pp on in-distribution data.
+**Total training (excl FPB): 8,643 samples**
 
-4. **Qualify the architecture claim**: Frame the +7.84pp as "under LoRA r=16 configuration" and note it is confounded by asymmetric LoRA capacity. Running NB09e (full fine-tune) would resolve this.
+### Known Data Issues (from provenance audit)
+1. **Source 4 is 68% Canadian mining**: TSX-V listings, drill results, assay values — extremely narrow sub-domain
+2. **Source 8 truncation**: 68.1% of earnings call Q&A samples exceed 512 tokens and get truncated — model trains on incomplete text
+3. **Class distribution mismatch**: Training has 10.2% NEGATIVE vs. FPB's 12.5%, creating a distribution shift
+4. **All non-FPB labels are LLM-generated**: Sources 3, 4, 8, 9 all use LLM annotation, only FPB (excluded) has human labels
 
-5. **Improve Claude comparison**: Run Claude evaluation 3-5 times for CIs, use the full SKILL.md with examples, and report the FPB-only gap (4.9pp) alongside the overall gap (10.4pp).
+### Evaluation Protocol
+- **FPB sentences_50agree**: 4,846 sentences, ≥50% annotator agreement. The harder benchmark.
+- **FPB sentences_allAgree**: 2,264 sentences, unanimous agreement. Easier (less ambiguous).
+- **Aggregated test set**: ~480 samples from the same sources as training (in-distribution).
 
-6. **Add error analysis**: Include at least one confusion matrix and a qualitative discussion of failure modes.
+---
 
-7. **Clarify HuggingFace model**: State explicitly which checkpoint is uploaded and whether it was trained on FPB. If the uploaded model differs from the experimental models, document this prominently.
+## Augmentation Data Files
 
-8. **Compare with recent baselines**: Add finbert-lc (2024) and FinBERT-IJCAI (2020) to the comparison tables.
+Multiple generations of augmentation data exist in `data/raw/`:
+
+### Manual DataBoost (simple paraphrasing, various batch sizes)
+- `Manual_DataBoost - 100.csv` through `Manual_DataBoost - 940.csv`
+- Structure: `Original Text, Prompt, Synthetic, Label`
+- Generated via Claude API with simple paraphrase prompts
+
+### ModernFinBERT DataBoost v0 (iterated paraphrasing)
+- `ModernFinBERT_DataBoost_v0 - 1.csv`, `- 3.csv`, `- 1033.csv`, `- v0-2.csv`
+- Structure: `Original Text, Prompt, Synthetic, Label, Stage`
+- Includes stage markers (`v0-1`, `v0-2`) showing iterative augmentation rounds
+
+### VS-CoT Augmentation (used in 02A)
+- Embedded as `VS_DATA_B64` blob in the notebook itself
+- 246 samples generated using Verbalized Sampling with Chain-of-Thought
+- Targets 82 misclassified validation samples across multiple confusion patterns
+- Spans 6+ financial sub-domains per sample
+
+---
+
+## What Would a "Full Fine-Tuning + DataBoost" Notebook Need?
+
+To create the missing experiment, you would need to combine:
+
+### From 09e (Full FT):
+- All parameters unfrozen (no LoRA)
+- Gradient checkpointing for memory
+- Lower learning rate (2e-5 vs 2e-4)
+- Higher weight decay (0.01 vs 0.001)
+- Possibly larger effective batch size for stability
+
+### From 02A (DataBoost):
+- Error mining on validation set after baseline training
+- VS-CoT augmentation data (either pre-generated or API-based)
+- Concatenation of original + augmented data
+- Fresh model retraining on augmented set
+- Evaluation on all three test sets (val, FPB 50agree/allAgree, aggregated test)
+
+### Key Considerations:
+1. **Error mining must be redone** — the misclassified samples from full FT baseline will differ from those of the LoRA baseline, because the models have different capacity
+2. **Augmentation data should be regenerated** — the confusion patterns may be different under full FT (e.g., different boundary errors)
+3. **Memory requirements** — full FT of ModernBERT-base (149M params) + gradient checkpointing needs substantial GPU RAM (~12-16GB in FP16)
+4. **Risk of overfitting** — full FT with only ~8,643 training samples (+ ~246 augmented) may overfit more aggressively than LoRA; the lower LR and higher weight decay in 09e are designed to mitigate this
+5. **The LoRA asymmetry question** — if full FT closes the BERT-ModernBERT gap (as 09e was designed to test), then DataBoost on full FT ModernBERT might show different improvement dynamics
+
+---
+
+## Performance Landscape (All Configurations)
+
+| Config | Protocol | FPB 50agree | FPB allAgree |
+|--------|----------|-------------|--------------|
+| ProsusAI/finbert | In-domain | 88.96% | 97.17% |
+| FinBERT-IJCAI | In-domain | 94% | — |
+| finbert-lc | In-domain | 89% | 97% |
+| ModernBERT + LoRA (CV) | 10-fold CV | 86.88% | — |
+| BERT + LoRA (CV) | 10-fold CV | 85.27% | — |
+| ModernBERT + LoRA (held-out) | Held-out | 80.44-80.93% | 92.98-93.29% |
+| **ModernBERT + LoRA + DataBoost** | **Held-out** | **82.56%** | **95.14%** |
+| BERT + LoRA (held-out) | Held-out | 73.09% | 83.66% |
+| ModernBERT + LoRA + DataBoost + Self-Train | Held-out | 80.54% | 94.08% |
+| finbert-tone | Zero-shot | 79.14% | 91.52% |
+| Claude Opus 4.6 + skill | Zero-shot | 72.75% (723 samples) | — |
+
+**DataBoosted ModernBERT + LoRA is the best held-out configuration.** Self-training degrades performance. Full fine-tuning + DataBoost has never been tested.
+
+---
+
+## Key Insights
+
+1. **DataBoost is the single most impactful technique** for improving FPB held-out performance (+1.65pp accuracy, +7.84pp F1 on aggregated test)
+2. **Only 246 samples** (2.8% of training data) drive the improvement — extremely data-efficient
+3. **VS-CoT is critical** — standard paraphrasing mode-collapses; VS-CoT forces distributional diversity across financial registers
+4. **The model trains from scratch** each time — no incremental fine-tuning from baseline checkpoint
+5. **Error mining targets validation, not test** — this prevents data leakage but means the augmented data may not perfectly target FPB-specific confusion patterns
+6. **The protocol gap (6.4pp)** between in-domain CV and held-out evaluation is the central finding of the paper — DataBoost partially closes it
+7. **Full FT + DataBoost is untested** — this is the natural next experiment and could potentially yield the best held-out performance, but needs careful hyperparameter tuning to avoid overfitting on the small dataset
