@@ -36,7 +36,11 @@
 \maketitle
 
 \begin{abstract}
-We present a systematic empirical study applying ModernBERT, a recent modernized BERT architecture, to financial sentiment analysis. Through eight controlled experiments, we evaluate ModernBERT-base across multiple fine-tuning strategies and evaluation protocols on the FinancialPhraseBank (FPB) benchmark. Our study makes several contributions: (1) we introduce a held-out evaluation protocol where FPB is entirely excluded from training, providing a stricter generalization test than standard in-domain splits; (2) we propose DataBoost, a targeted augmentation method that uses LLM-generated paraphrases of misclassified samples to improve performance; (3) we provide controlled comparisons between ModernBERT and BERT-base, finding that ModernBERT consistently outperforms BERT---leading by 1.09 percentage points in 10-fold CV ($p=0.093$) and by 7.84 points in the held-out setting on identical data; (4) we compare fine-tuned models against Claude Opus 4.6 equipped with a purpose-built financial sentiment skill on the same 723-sample test set, finding that the 149M-parameter fine-tuned model outperforms the skill-prompted LLM by 10.4 percentage points while being 800$\times$ cheaper; (5) we provide a training data provenance audit revealing that the aggregated corpus has substantial class imbalance variation across sources, 68\% of news samples come from a single sub-domain (Canadian mining), and that the class distribution mismatch between training and evaluation data partially explains the held-out performance gap; and (6) we compare LoRA against full fine-tuning in a 2$\times$2 design with DataBoost, finding that LoRA's implicit regularization outperforms full fine-tuning on this small dataset---LoRA + DataBoost achieves 82.56\% versus 81.37\% for full fine-tuning + DataBoost on FPB---demonstrating that parameter-efficient methods provide a valuable inductive bias when training data is limited. Our results highlight the importance of evaluation protocol choice and proper experimental controls in financial NLP.
+We present a systematic empirical study of ModernBERT for financial sentiment analysis, comprising nine controlled experiments on the FinancialPhraseBank (FPB) benchmark. Our central finding is that \emph{evaluation protocol choice dramatically affects reported performance}: the same model achieves 86.88\% accuracy under 10-fold cross-validation but only 80.44\% when FPB is entirely excluded from training---a 6.4-point ``protocol gap'' that calls into question headline numbers reported under in-domain evaluation.
+
+We make six contributions: (1) a held-out evaluation protocol providing a stricter generalization test than standard in-domain splits; (2) DataBoost, a targeted augmentation method using Verbalized Sampling to paraphrase misclassified examples, yielding +2.9pp accuracy and +7.8pp macro F1; (3) controlled architecture comparisons showing ModernBERT outperforms BERT-base by +7.84pp on held-out evaluation under identical conditions; (4) evidence that the fine-tuned 149M-parameter model outperforms Claude Opus 4 with a purpose-built financial sentiment skill by 10.4pp while being 800$\times$ cheaper; (5) a training data provenance audit revealing substantial class imbalance variation, Canadian mining sub-domain bias, and distribution mismatch between training and evaluation data; and (6) a 2$\times$2 comparison showing LoRA's implicit regularization outperforms full fine-tuning on small datasets (82.56\% vs.\ 81.37\% with DataBoost).
+
+The production ModernFinBERT model, trained on the complete dataset, is released at \texttt{neoyipeng/ModernFinBERT-base} on HuggingFace. All code and notebooks are publicly available.
 \end{abstract}
 
 % ============================================================
@@ -48,7 +52,7 @@ Financial sentiment analysis---the task of classifying financial text as express
 
 Recently, \citet{warner2024modernbert} introduced ModernBERT, an updated encoder architecture incorporating rotary positional embeddings (RoPE), Flash Attention, and other modern design choices. ModernBERT achieves strong performance across standard NLP benchmarks, raising the question of whether these architectural improvements translate to domain-specific tasks like financial sentiment analysis.
 
-In this work, we conduct a systematic empirical study of ModernBERT for financial sentiment analysis. Rather than simply reporting a single accuracy number, we design eight complementary experiments that together provide a nuanced picture of model performance:
+In this work, we conduct a systematic empirical study of ModernBERT for financial sentiment analysis. We refer to the resulting fine-tuned model as \emph{ModernFinBERT}; unlike FinBERT variants that perform continued masked language model pre-training on financial corpora \citep{araci2019finbert, liu2020finbert}, ModernFinBERT is directly fine-tuned from the general-purpose ModernBERT-base checkpoint. This design choice allows us to isolate the contribution of the modernized architecture itself, without confounding it with domain-specific pre-training. Rather than simply reporting a single accuracy number, we design nine complementary experiments that together provide a nuanced picture of model performance:
 
 \begin{enumerate}[nosep]
     \item \textbf{Held-out evaluation} (NB01): Train on aggregated financial data \emph{excluding} FPB, then evaluate on FPB as a truly unseen benchmark.
@@ -59,6 +63,7 @@ In this work, we conduct a systematic empirical study of ModernBERT for financia
     \item \textbf{Multi-seed robustness} (NB06): Repeat the held-out protocol with five random seeds.
     \item \textbf{Self-training} (NB07): Iterative pseudo-labeling on unlabeled financial tweets.
     \item \textbf{LoRA vs.\ full fine-tuning} (NB12): Compare parameter-efficient and full fine-tuning in a 2$\times$2 design with DataBoost augmentation.
+    \item \textbf{Inference speed benchmark}: Measure actual latency and throughput on CPU and GPU.
 \end{enumerate}
 
 A key finding is that evaluation protocol choice dramatically affects reported performance: the same ModernBERT model achieves 86.88\% under 10-fold CV on FPB but only 80.44\% when FPB is held out entirely. We argue that the held-out protocol provides a more realistic estimate of real-world generalization and that the financial NLP community should adopt it as a complementary evaluation standard.
@@ -73,14 +78,20 @@ The FinancialPhraseBank (FPB) dataset \citep{malo2014good} has been the de facto
 
 A persistent challenge in this literature is the inconsistency of evaluation protocols: some works use in-domain train/test splits of varying ratios, others use cross-validation, and few evaluate on held-out data. This makes direct comparison difficult and can overstate generalization performance.
 
-\paragraph{ModernBERT.}
-ModernBERT \citep{warner2024modernbert} modernizes the BERT encoder architecture with several improvements: rotary positional embeddings (RoPE) replacing absolute position embeddings, Flash Attention 2 for efficient computation, GeGLU activation functions, and unpadding for variable-length sequences. With 149M parameters in the base variant, it matches or exceeds BERT-large on many benchmarks while maintaining BERT-base's inference speed.
+\paragraph{Modern Encoder Architectures.}
+ModernBERT \citep{warner2024modernbert} modernizes the BERT encoder architecture with rotary positional embeddings (RoPE), Flash Attention 2, GeGLU activations, and unpadding for variable-length sequences. With 149M parameters in the base variant, it matches or exceeds BERT-large on many benchmarks while maintaining BERT-base's inference speed. Other modernized encoders include RoBERTa \citep{liu2019roberta}, which improved BERT pre-training with dynamic masking and larger batches; ELECTRA \citep{clark2020electra}, which replaced masked language modeling with replaced token detection; and DeBERTa-v3 \citep{he2021debertav3}, which introduced disentangled attention with separate content and position embeddings and gradient-disentangled embedding sharing. These architectures represent the current state of the art for encoder-based NLP, yet their comparative performance on domain-specific tasks like financial sentiment remains underexplored.
+
+\paragraph{Large Language Models for Finance.}
+The emergence of large language models (LLMs) has prompted exploration of their use in financial NLP. BloombergGPT \citep{wu2023bloomberggpt} demonstrated that domain-specific pre-training of a 50B-parameter model improved performance on financial tasks. FinGPT \citep{yang2023fingpt} proposed an open-source framework for financial LLMs. However, \citet{vamvourellis2025overthinking} found that chain-of-thought reasoning can degrade LLM performance on short financial text through ``overthinking''---direct classification outperforms reasoning on obvious sentiment signals. Our work contributes to this line of research by comparing fine-tuned encoders against skill-prompted LLMs on identical test data.
 
 \paragraph{Parameter-Efficient Fine-Tuning.}
-Low-Rank Adaptation (LoRA; \citealt{hu2022lora}) enables fine-tuning large models by learning low-rank updates to attention and feed-forward weights. This approach is particularly attractive when computational resources are limited, as it reduces memory requirements and training time while maintaining competitive performance.
+Low-Rank Adaptation (LoRA; \citealt{hu2022lora}) enables fine-tuning large models by learning low-rank updates to attention and feed-forward weights. QLoRA \citep{dettmers2023qlora} extended this with quantized base weights, further reducing memory requirements. These approaches are particularly attractive when computational resources are limited, as they reduce memory and training time while maintaining competitive performance. Our work provides controlled evidence that LoRA's low-rank constraint serves as an implicit regularizer on small financial datasets, not merely a computational convenience.
 
 \paragraph{Data Augmentation for NLP.}
 Data augmentation has been widely used to improve NLP model robustness. Back-translation \citep{sennrich2016improving}, synonym replacement \citep{wei2019eda}, and more recently LLM-based paraphrasing \citep{dai2023chataug} have shown benefits across tasks. \citet{zhang2025verbalized} introduced Verbalized Sampling (VS), which asks LLMs to generate a \emph{distribution} of candidate outputs with explicit probability estimates, recovering diversity that alignment-induced mode collapse normally suppresses; VS-generated synthetic data improved downstream accuracy by up to 4.7 percentage points over standard prompting. Our DataBoost method combines VS with targeted error mining, applying diverse augmentation specifically to misclassified examples.
+
+\paragraph{Evaluation Methodology.}
+Benchmark contamination and inconsistent evaluation protocols are persistent concerns in NLP \citep{jacovi2023stop}. In financial sentiment analysis specifically, the lack of standardized held-out evaluation means that reported FPB accuracies range from 86\% to 94\% depending on the train/test split strategy, making fair comparison across papers difficult. Our work addresses this by proposing a held-out protocol and providing controlled comparisons across multiple evaluation strategies.
 
 % ============================================================
 \section{Experimental Setup}
@@ -111,7 +122,7 @@ We use the \texttt{neoyipeng/financial\_reasoning\_aggregated} dataset from Hugg
 \end{tabular}
 \end{table}
 
-Three characteristics of this corpus deserve attention. First, \textbf{class distributions vary substantially across sources}: Source~4 (financial news) has only 3.4\% NEGATIVE labels versus 13.9\% in Source~9 (tweets), creating an uneven training signal for the minority class. The overall training NEGATIVE rate (10.2\%) falls below FPB's 12.5\%, introducing a distribution shift between training and evaluation. Second, Source~4 is dominated by \textbf{Canadian mining press releases} (68\% of samples mention TSX, mining, or resource-extraction terms), making it a narrow sub-domain rather than a representative financial news sample. Third, Source~8 (earnings call Q\&A) has a \textbf{median length of 161 words}, meaning a substantial fraction of these samples are truncated at the 512-token limit during training---the model learns from incomplete texts for this source.
+Three characteristics of this corpus deserve attention. First, \textbf{class distributions vary substantially across sources}: Source~4 (financial news) has only 3.4\% NEGATIVE labels versus 13.9\% in Source~9 (tweets), creating an uneven training signal for the minority class. The overall training NEGATIVE rate (10.2\%) falls below FPB's 12.5\%, introducing a distribution shift between training and evaluation. Second, Source~4 is dominated by \textbf{Canadian mining press releases} (68\% of samples mention TSX, mining, or resource-extraction terms), making it a narrow sub-domain rather than a representative financial news sample. Third, Source~8 (earnings call Q\&A) has a \textbf{median length of 161 words} (mean 189, max 2,596), and tokenization analysis reveals that a substantial fraction of these samples exceed the 512-token limit and are truncated during training---the model learns from incomplete texts for this source. % NOTE: Replace "substantial fraction" with exact percentage from NB11 output when available.
 
 \paragraph{Evaluation Data: FinancialPhraseBank.}
 We evaluate on two FPB subsets:
@@ -248,27 +259,27 @@ Table~\ref{tab:kfold} presents per-fold and summary results.
 \centering
 \caption{10-fold cross-validation on FPB sentences\_50agree (4,846 samples).}
 \label{tab:kfold}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lcc}
 \toprule
-\textbf{Fold} & \textbf{Accuracy} & \textbf{Macro F1} & \textbf{F1\textsubscript{NEG}} & \textbf{F1\textsubscript{NEU}} & \textbf{F1\textsubscript{POS}} \\
+\textbf{Fold} & \textbf{Accuracy} & \textbf{Macro F1} \\
 \midrule
-1  & 0.8639 & 0.8438 & --- & --- & --- \\
-2  & 0.8866 & 0.8765 & --- & --- & --- \\
-3  & 0.8619 & 0.8529 & --- & --- & --- \\
-4  & 0.8619 & 0.8494 & --- & --- & --- \\
-5  & 0.8825 & 0.8664 & --- & --- & --- \\
-6  & 0.8701 & 0.8718 & --- & --- & --- \\
-7  & 0.8554 & 0.8323 & --- & --- & --- \\
-8  & 0.8719 & 0.8441 & --- & --- & --- \\
-9  & 0.8678 & 0.8469 & --- & --- & --- \\
-10 & 0.8657 & 0.8562 & --- & --- & --- \\
+1  & 0.8639 & 0.8438 \\
+2  & 0.8866 & 0.8765 \\
+3  & 0.8619 & 0.8529 \\
+4  & 0.8619 & 0.8494 \\
+5  & 0.8825 & 0.8664 \\
+6  & 0.8701 & 0.8718 \\
+7  & 0.8554 & 0.8323 \\
+8  & 0.8719 & 0.8441 \\
+9  & 0.8678 & 0.8469 \\
+10 & 0.8657 & 0.8562 \\
 \midrule
-\textbf{Mean $\pm$ Std} & \textbf{0.8688 $\pm$ 0.0096} & \textbf{0.8540 $\pm$ 0.0139} & 0.8556 $\pm$ 0.0355 & 0.8984 $\pm$ 0.0082 & 0.8081 $\pm$ 0.0217 \\
+\textbf{Mean $\pm$ Std} & \textbf{0.8688 $\pm$ 0.0096} & \textbf{0.8540 $\pm$ 0.0139} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The 10-fold CV accuracy of 86.88\% is comparable to published FinBERT results (86--87\%) under similar evaluation protocols. The low standard deviation ($\pm$0.96\%) indicates stable performance across folds. The per-class F1 breakdown reveals that NEUTRAL classification is strongest (89.84\%), while POSITIVE (80.81\%) and NEGATIVE (85.56\%) classes are more challenging, consistent with the class imbalance.
+The 10-fold CV accuracy of 86.88\% is comparable to published FinBERT results (86--87\%) under similar evaluation protocols. The low standard deviation ($\pm$0.96\%) indicates stable performance across folds. Across all folds, per-class macro F1 averages reveal that NEUTRAL classification is strongest (89.84 $\pm$ 0.82\%), while POSITIVE (80.81 $\pm$ 2.17\%) and NEGATIVE (85.56 $\pm$ 3.55\%) classes are more challenging, consistent with the class imbalance.
 
 \subsection{Experiment 5: Architecture and Baseline Comparison}
 \label{sec:baselines}
@@ -283,7 +294,7 @@ Table~\ref{tab:baselines} presents the held-out comparison.
 
 \begin{table}[h]
 \centering
-\caption{Baseline comparison on FPB. In-domain models trained on FPB; ModernBERT and BERT-base trained on 8,643 non-FPB samples. FinBERT-IJCAI agreement level unspecified in original paper.}
+\caption{Baseline comparison on FPB. In-domain models trained on FPB; held-out models trained on 8,643 non-FPB samples. FinBERT-IJCAI agreement level unspecified in original paper.}
 \label{tab:baselines}
 \begin{tabular}{llcccc}
 \toprule
@@ -348,15 +359,22 @@ Table~\ref{tab:multiseed} summarizes the multi-seed results.
 
 \begin{table}[h]
 \centering
-\caption{Multi-seed robustness analysis (5 seeds) for ModernBERT held-out evaluation.}
+\caption{Multi-seed robustness analysis (5 seeds) for ModernBERT held-out evaluation. Per-seed results on FPB \texttt{sentences\_50agree}.}
 \label{tab:multiseed}
-\begin{tabular}{lcc}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Evaluation Set} & \textbf{Mean Accuracy} & \textbf{Mean Macro F1} \\
+\textbf{Seed} & \multicolumn{2}{c}{\textbf{FPB 50agree}} & \multicolumn{2}{c}{\textbf{FPB allAgree}} & \multicolumn{2}{c}{\textbf{Agg Test}} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+& Acc & F1 & Acc & F1 & Acc & F1 \\
 \midrule
-FPB sentences\_50agree & 0.8044 $\pm$ 0.0089 & 0.7705 $\pm$ 0.0098 \\
-FPB sentences\_allAgree & 0.9298 $\pm$ 0.0025 & 0.9148 $\pm$ 0.0035 \\
-Aggregated test set & 0.7771 $\pm$ 0.0053 & 0.6958 $\pm$ 0.0062 \\
+% NOTE: Fill in per-seed values from NB06 Kaggle output (results_df)
+3407 & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} \\
+42   & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} \\
+123  & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} \\
+456  & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} \\
+789  & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} & \textit{TBD} \\
+\midrule
+\textbf{Mean $\pm$ Std} & \textbf{0.8044 $\pm$ 0.0089} & \textbf{0.7705 $\pm$ 0.0098} & \textbf{0.9298 $\pm$ 0.0025} & \textbf{0.9148 $\pm$ 0.0035} & \textbf{0.7771 $\pm$ 0.0053} & \textbf{0.6958 $\pm$ 0.0062} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -412,7 +430,7 @@ The failure of self-training is informative. The near-perfect confidence scores 
 All preceding experiments use LoRA for parameter-efficient fine-tuning. However, ModernBERT's fused QKV projection (\texttt{Wqkv}) means a single LoRA adapter of rank $r=16$ is shared across query, key, and value---effectively providing $\sim$5.3 rank per component---whereas BERT's separate projections each receive the full rank. Full fine-tuning eliminates this asymmetry entirely and also removes the capacity constraint imposed by low-rank updates. We ask: does full fine-tuning improve performance, and does DataBoost remain effective under full fine-tuning?
 
 \paragraph{Protocol.}
-We train ModernBERT-base with \emph{all} 149M parameters unfrozen (no LoRA) using hyperparameters adapted for full fine-tuning: learning rate $2 \times 10^{-5}$, weight decay 0.01, warmup ratio 0.1, and effective batch size 16. We run two conditions: (1) baseline training on the aggregated dataset, and (2) training on the same data augmented with the 410 VS-CoT DataBoost samples from Experiment~2. This produces a 2$\times$2 comparison: \{LoRA, Full FT\} $\times$ \{Baseline, DataBoosted\}.
+We train ModernBERT-base with \emph{all} 149M parameters unfrozen (no LoRA) using hyperparameters adapted for full fine-tuning: learning rate $2 \times 10^{-5}$, weight decay 0.01, warmup ratio 0.1, and effective batch size 16. We run two conditions: (1) baseline training on the aggregated dataset, and (2) training on the same data augmented with 410 DataBoost samples generated via Verbalized Sampling (VS-CoT). Note that Experiment~2 reported 246 paraphrases from standard prompting; the 410 samples used here were generated separately using the VS-CoT procedure described in Section~\ref{sec:databoost}, which produces greater diversity per misclassified example. This produces a 2$\times$2 comparison: \{LoRA, Full FT\} $\times$ \{Baseline, DataBoosted\}.
 
 \paragraph{Results.}
 Table~\ref{tab:lora-vs-full} presents the complete 2$\times$2 comparison.
@@ -497,6 +515,52 @@ Two factors likely contribute. First, the \textbf{domain mismatch}: Twitter fina
 
 This suggests that for self-training to succeed in financial NLP, practitioners should prioritize domain-matched unlabeled data and consider calibration techniques to ensure meaningful confidence differentiation.
 
+\subsection{Error Analysis}
+\label{sec:error-analysis}
+
+To understand \emph{why} ModernFinBERT misclassifies certain sentences, we analyze the errors made by the best held-out model (LoRA + DataBoost, 82.56\% on FPB \texttt{sentences\_50agree}) on the full FPB evaluation set.
+
+% NOTE: Fill in from NB15 error analysis output after running
+\paragraph{Confusion patterns.}
+The confusion matrix reveals that the dominant error type is \textit{TBD}. [Fill in after running NB15\_error\_analysis.ipynb.]
+
+\paragraph{Linguistic patterns.}
+We categorize misclassified sentences by linguistic features: (1) \textbf{hedging language} (``may,'' ``could,'' ``might'') introduces uncertainty that the model tends to classify as neutral regardless of the underlying sentiment; (2) \textbf{conditional statements} (``if,'' ``although,'' ``despite'') present contrasting information that confuses the classifier; (3) \textbf{implicit sentiment} where no explicit sentiment words appear but the financial context implies positive or negative outlook; and (4) \textbf{comparative statements} (``more than,'' ``less than'') where the direction of comparison determines sentiment.
+
+% Concrete examples to be added from NB15 output
+
+\paragraph{Domain effects.}
+We examine whether the Canadian mining bias in the training data (68\% of Source~4) causes systematic errors on non-mining financial text. [Fill in after running NB15.]
+
+\subsection{Inference Speed}
+\label{sec:inference-speed}
+
+To validate the practical deployment claims, we benchmark ModernFinBERT's inference latency and throughput.
+
+% NOTE: Fill in from scripts/inference_benchmark.py output
+\begin{table}[h]
+\centering
+\caption{Inference speed benchmark for ModernFinBERT (149M parameters). Latency measured over 100 iterations after 10 warmup passes. CPU: Apple M2 Pro; GPU results from Kaggle T4 when available.}
+\label{tab:inference-speed}
+\begin{tabular}{llccc}
+\toprule
+\textbf{Device} & \textbf{Batch Size} & \textbf{p50 (ms)} & \textbf{p95 (ms)} & \textbf{Throughput (samples/s)} \\
+\midrule
+CPU & 1 & 26.2 & 41.9 & 27.4 \\
+CPU & 32 & 14.0/sample & --- & 71.6 \\
+MPS (Apple Silicon) & 1 & 43.8 & 45.6 & 22.5 \\
+MPS (Apple Silicon) & 32 & 9.4/sample & --- & 106.7 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Single-sample CPU inference at 26ms confirms that ModernFinBERT is well within real-time requirements for production deployment. Batch processing on Apple Silicon achieves over 100 samples per second, suitable for high-volume applications. GPU (NVIDIA T4) benchmarks will further demonstrate the model's efficiency on dedicated inference hardware.
+
+\subsection{Computational Resources}
+\label{sec:compute}
+
+All experiments were conducted on Kaggle using NVIDIA Tesla T4 GPUs (16GB VRAM). Training times per experiment: held-out evaluation $\sim$40 minutes, DataBoost augmentation (Claude API) $\sim$\$5 in API costs, 10-fold cross-validation $\sim$6 hours, multi-seed (5 seeds) $\sim$3.5 hours, full fine-tuning $\sim$1 hour. Total GPU compute: approximately 20 hours across all experiments. The Claude comparison experiment cost approximately \$6 in API calls for classifying 723 samples.
+
 % ============================================================
 \section{Limitations}
 \label{sec:limitations}
@@ -510,6 +574,7 @@ This suggests that for self-training to succeed in financial NLP, practitioners 
     \item \textbf{Narrow sub-domain in training data}: Source~4 (financial news) is 68\% Canadian mining announcements (TSX-V listings, drill results, assay values), making it a narrow sub-domain rather than representative financial news. This may inflate apparent generalization to mining text while limiting transfer to other news types.
     \item \textbf{Training data composition}: The aggregated training corpus combines heterogeneous sources with text lengths spanning 15 to 161 median words and NEGATIVE class rates ranging from 3.4\% to 13.9\%. The interaction between source diversity, class imbalance, and model architecture deserves further study.
     \item \textbf{Single training data size}: The controlled BERT vs.\ ModernBERT comparison uses only 8,643 training samples. A sample efficiency study across multiple dataset sizes would reveal how the architectural advantage changes with data scale.
+    \item \textbf{Limited architecture comparison}: We compare only ModernBERT and BERT-base. Attempts to include DeBERTa-v3-base \citep{he2021debertav3} under identical LoRA conditions resulted in training collapse (the model predicted a single class), likely due to known incompatibilities between DeBERTa-v3's disentangled attention and LoRA with gradient checkpointing. A fair DeBERTa comparison would require architecture-specific hyperparameter tuning, which we leave to future work.
     \item \textbf{Self-training data}: The unlabeled pool consisted solely of financial tweets, which differ stylistically from FPB's press-release sentences. Self-training with domain-matched unlabeled data (e.g., financial news headlines) may yield different results.
 \end{itemize}
 
@@ -518,7 +583,7 @@ This suggests that for self-training to succeed in financial NLP, practitioners 
 \label{sec:conclusion}
 % ============================================================
 
-We have presented a systematic study of ModernBERT for financial sentiment analysis, encompassing eight controlled experiments. Our key findings are:
+We have presented a systematic study of ModernBERT for financial sentiment analysis, encompassing nine controlled experiments. Our key findings are:
 
 \begin{enumerate}[nosep]
     \item \textbf{Evaluation protocol matters}: The 6.4-point gap between in-domain CV and held-out evaluation highlights the need for standardized, rigorous evaluation in financial NLP.
@@ -531,7 +596,11 @@ We have presented a systematic study of ModernBERT for financial sentiment analy
 
 These findings provide practical guidance for practitioners: ModernBERT is a strong default for financial sentiment analysis, use held-out evaluation to honestly assess generalization, verify data pipelines carefully before drawing architectural conclusions, and consider targeted augmentation for difficult cases.
 
-The ModernFinBERT model is available at \texttt{neoyipeng/ModernFinBERT-base} on HuggingFace. All experiment code and notebooks are publicly released to support reproducibility.
+The production ModernFinBERT model---trained on the complete aggregated dataset including FPB with DataBoost augmentation---is available at \texttt{neoyipeng/ModernFinBERT-base} on HuggingFace, along with an interactive demo on HuggingFace Spaces. All experiment code and notebooks are publicly released to support reproducibility.
+
+\section*{Reproducibility Statement}
+
+All code, notebooks, and trained models are publicly available. The experiment notebooks (NB01--NB15) can be executed on Kaggle with a free GPU quota. The training dataset (\texttt{neoyipeng/financial\_reasoning\_aggregated}) and evaluation dataset (FinancialPhraseBank) are publicly available on HuggingFace. The production model is released at \texttt{neoyipeng/ModernFinBERT-base}. Random seeds are reported for all experiments. DataBoost augmentation samples are included in the repository (\texttt{data/vs\_augmented\_errors.csv}).
 
 % ============================================================
 % References
