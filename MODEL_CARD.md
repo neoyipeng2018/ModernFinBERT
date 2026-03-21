@@ -109,6 +109,30 @@ Results from the research paper using LoRA fine-tuning on non-FPB data only:
 - **Precision:** FP16 mixed precision
 - **Hardware:** NVIDIA Tesla T4 (16GB)
 
+## Confidence Calibration
+
+The model includes post-hoc temperature scaling for calibrated confidence scores. Raw softmax probabilities are overconfident; calibrated probabilities better reflect actual accuracy.
+
+The learned temperature `T` is stored in `calibration_config.json` (available in the model repo). To use calibrated inference:
+
+```python
+import json, torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+model = AutoModelForSequenceClassification.from_pretrained("neoyipeng/ModernFinBERT-base")
+tokenizer = AutoTokenizer.from_pretrained("neoyipeng/ModernFinBERT-base")
+
+# Load calibration temperature (or hardcode after NB16 runs)
+# T = calibration_config["temperature"]
+T = 1.0  # Replace with actual T after running NB16
+
+inputs = tokenizer("Revenue grew 15%.", return_tensors="pt", truncation=True, max_length=512)
+with torch.no_grad():
+    logits = model(**inputs).logits
+    calibrated_probs = torch.softmax(logits / T, dim=-1)
+    print(calibrated_probs)
+```
+
 ## Limitations
 
 - **English only**: Trained and evaluated exclusively on English financial text.

@@ -1,8 +1,11 @@
 """
 ModernFinBERT Gradio Demo — Financial Sentiment Analysis.
 Loads neoyipeng/ModernFinBERT-base and classifies input text as
-NEGATIVE, NEUTRAL, or POSITIVE with confidence scores.
+NEGATIVE, NEUTRAL, or POSITIVE with calibrated confidence scores.
 """
+
+import json
+from pathlib import Path
 
 import gradio as gr
 import torch
@@ -10,6 +13,18 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 MODEL_ID = "neoyipeng/ModernFinBERT-base"
 LABEL_NAMES = ["NEGATIVE", "NEUTRAL", "POSITIVE"]
+
+# Load calibration config (temperature scaling)
+TEMPERATURE = 1.0
+cal_path = Path(__file__).resolve().parent.parent / "calibration_config.json"
+if cal_path.exists():
+    with open(cal_path) as f:
+        cal_config = json.load(f)
+    TEMPERATURE = cal_config["temperature"]
+    print(f"Calibration loaded: T={TEMPERATURE:.4f} "
+          f"(ECE: {cal_config['ece_before']:.4f} -> {cal_config['ece_after']:.4f})")
+else:
+    print("No calibration_config.json found, using raw softmax (T=1.0)")
 
 print(f"Loading {MODEL_ID}...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
@@ -20,7 +35,7 @@ print(f"Model loaded on {device}.")
 
 
 def predict(text: str) -> dict[str, float]:
-    """Return sentiment label confidences for the input text."""
+    """Return calibrated sentiment confidences for the input text."""
     if not text or not text.strip():
         return {label: 0.0 for label in LABEL_NAMES}
 
@@ -32,7 +47,8 @@ def predict(text: str) -> dict[str, float]:
 
     with torch.no_grad():
         logits = model(**inputs).logits
-        probs = torch.softmax(logits, dim=-1).squeeze().cpu().numpy()
+        calibrated_logits = logits / TEMPERATURE
+        probs = torch.softmax(calibrated_logits, dim=-1).squeeze().cpu().numpy()
 
     return {label: float(round(prob, 4)) for label, prob in zip(LABEL_NAMES, probs)}
 
@@ -62,6 +78,8 @@ demo = gr.Interface(
         "[ModernBERT](https://huggingface.co/answerdotai/ModernBERT-base) architecture, "
         "fine-tuned on aggregated financial sentiment data. It classifies text as "
         "**Negative**, **Neutral**, or **Positive**.\n\n"
+        "Confidence scores are **calibrated** via temperature scaling "
+        f"(T={TEMPERATURE:.2f}) for reliable uncertainty estimates.\n\n"
         "Model: [`neoyipeng/ModernFinBERT-base`](https://huggingface.co/neoyipeng/ModernFinBERT-base) "
         "| Paper: *ModernFinBERT: Modernizing Financial Sentiment Analysis with ModernBERT*"
     ),

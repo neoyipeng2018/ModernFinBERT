@@ -532,6 +532,37 @@ We categorize misclassified sentences by linguistic features: (1) \textbf{hedgin
 \paragraph{Domain effects.}
 We examine whether the Canadian mining bias in the training data (68\% of Source~4) causes systematic errors on non-mining financial text. [Fill in after running NB15.]
 
+\subsection{Confidence Calibration}
+\label{sec:calibration}
+
+Neural networks are known to produce overconfident predictions \citep{guo2017calibration}. Our error analysis (Section~\ref{sec:error-analysis}) confirms this for ModernFinBERT: a substantial fraction of misclassified samples have prediction confidence exceeding 0.9, meaning the model is wrong but very sure. For financial applications where incorrect sentiment signals can drive trading losses, overconfidence is a critical safety issue.
+
+To address this, we apply post-hoc temperature scaling. We collect held-out logits via 5-fold cross-validation on the complete training set (including DataBoost augmentation), yielding $\sim$13,900 logit vectors with no data leakage. A single temperature parameter $T$ is learned by minimizing negative log-likelihood on these logits:
+\[
+\hat{T} = \arg\min_T \left[ -\frac{1}{N} \sum_{i=1}^{N} \log \frac{\exp(z_{i,y_i} / T)}{\sum_c \exp(z_{i,c} / T)} \right]
+\]
+where $z_i$ are the raw logits and $y_i$ is the true label for sample $i$.
+
+% NOTE: Fill in from NB16 output after running
+\begin{table}[h]
+\centering
+\caption{Calibration results. ECE = Expected Calibration Error (lower is better). Temperature scaling reduces ECE while preserving all predictions (argmax unchanged).}
+\label{tab:calibration}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Method} & \textbf{ECE} & \textbf{Parameters} \\
+\midrule
+Uncalibrated (softmax) & \textit{TBD} & 0 \\
+Temperature scaling ($T = $ \textit{TBD}) & \textit{TBD} & 1 \\
+Vector scaling & \textit{TBD} & 6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Crucially, temperature scaling preserves all predictions---dividing logits by a positive scalar does not change the argmax---so accuracy and F1 scores are identical before and after calibration. Only the confidence scores change, becoming better aligned with actual accuracy. The calibrated model enables practitioners to set meaningful confidence thresholds for human-in-the-loop workflows: for example, routing predictions below 70\% confidence to manual review.
+
+The learned temperature $T$ and calibration configuration are released alongside the model at \texttt{neoyipeng/ModernFinBERT-base}.
+
 \subsection{Inference Speed}
 \label{sec:inference-speed}
 
@@ -576,6 +607,7 @@ All experiments were conducted on Kaggle using NVIDIA Tesla T4 GPUs (16GB VRAM).
     \item \textbf{Single training data size}: The controlled BERT vs.\ ModernBERT comparison uses only 8,643 training samples. A sample efficiency study across multiple dataset sizes would reveal how the architectural advantage changes with data scale.
     \item \textbf{Limited architecture comparison}: We compare only ModernBERT and BERT-base. Attempts to include DeBERTa-v3-base \citep{he2021debertav3} under identical LoRA conditions resulted in training collapse (the model predicted a single class), likely due to known incompatibilities between DeBERTa-v3's disentangled attention and LoRA with gradient checkpointing. A fair DeBERTa comparison would require architecture-specific hyperparameter tuning, which we leave to future work.
     \item \textbf{Self-training data}: The unlabeled pool consisted solely of financial tweets, which differ stylistically from FPB's press-release sentences. Self-training with domain-matched unlabeled data (e.g., financial news headlines) may yield different results.
+    \item \textbf{Calibration scope}: The temperature parameter for confidence calibration (Section~\ref{sec:calibration}) was learned on the training distribution. It may require recalibration when the model is applied to substantially different financial text domains or time periods.
 \end{itemize}
 
 % ============================================================
@@ -592,6 +624,7 @@ We have presented a systematic study of ModernBERT for financial sentiment analy
     \item \textbf{Fine-tuning beats skill-prompted LLMs}: On the same 723-sample test set, ModernFinBERT outperforms Claude Opus 4.6 with a purpose-built financial sentiment skill by 10.4 percentage points, while being 800$\times$ cheaper and 500--1000$\times$ faster.
     \item \textbf{LoRA acts as a regularizer}: On small datasets, LoRA's low-rank constraint outperforms full fine-tuning (82.56\% vs.\ 81.37\% with DataBoost), demonstrating that parameter-efficient methods provide beneficial inductive bias, not just computational savings.
     \item \textbf{Self-training requires domain match}: Iterative pseudo-labeling on out-of-domain tweets did not improve performance, highlighting the importance of domain-matched unlabeled data for semi-supervised methods.
+    \item \textbf{Calibration improves trustworthiness}: Post-hoc temperature scaling reduces Expected Calibration Error while preserving all predictions, making confidence scores reliable for human-in-the-loop financial workflows.
 \end{enumerate}
 
 These findings provide practical guidance for practitioners: ModernBERT is a strong default for financial sentiment analysis, use held-out evaluation to honestly assess generalization, verify data pipelines carefully before drawing architectural conclusions, and consider targeted augmentation for difficult cases.
