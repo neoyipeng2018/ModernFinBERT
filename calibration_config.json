@@ -1,0 +1,20 @@
+{
+  "method": "temperature_scaling",
+  "temperature": 1.0002503395080566,
+  "ece_before": 0.0002421628089875454,
+  "ece_after": 0.00024216860939917103,
+  "calibration_samples": 14859,
+  "num_folds": 1,
+  "seed": 42,
+  "label_names": [
+    "NEGATIVE",
+    "NEUTRAL",
+    "POSITIVE"
+  ],
+  "fold_accuracies": [
+    0.9997308028804092
+  ],
+  "fold_f1s": [
+    0.9997066096620184
+  ]
+}
