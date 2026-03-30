@@ -1,96 +1,72 @@
 # ModernFinBERT
 
-A modernized financial sentiment analysis model based on the ModernBERT architecture, designed to outperform existing FinBERT variants.
+A systematic empirical study of ModernBERT for financial sentiment analysis, comprising nine controlled experiments on the FinancialPhraseBank (FPB) benchmark.
 
-## 🎯 Project Goals
+**Paper**: [ModernFinBERT: A Systematic Study of ModernBERT for Financial Sentiment Analysis](paper/main.pdf)
+**Model**: [neoyipeng/ModernFinBERT-base](https://huggingface.co/neoyipeng/ModernFinBERT-base)
+**Dataset**: [neoyipeng/financial_reasoning_aggregated](https://huggingface.co/datasets/neoyipeng/financial_reasoning_aggregated)
 
-- **Superior Accuracy**: Target >94% on FinancialPhraseBank (vs FinBERT's 93%)
-- **Fast Inference**: <50ms per sample for production use
-- **Community Impact**: Open-source release with comprehensive documentation
+## Key Results
 
-## 📊 Dataset
+| Protocol | Accuracy | Macro F1 |
+|----------|----------|----------|
+| FPB 50agree (10-fold CV) | 86.88% +/- 0.96% | 85.40% +/- 1.39% |
+| FPB 50agree (held-out) | 80.44% | 77.05% |
+| FPB 50agree (held-out + DataBoost) | 82.56% | 80.52% |
+| FPB allAgree (held-out + DataBoost) | 95.14% | 94.17% |
+| vs Claude Opus 4.6 (723 samples) | 83.13% vs 72.75% | +10.4pp |
 
-Using `neoyipeng/financial_reasoning_aggregated` from HuggingFace:
-- **Total Samples**: ~31,166 (Train: 19,940, Dev: 4,992, Test: 6,234)
-- **Labels**: 3-class sentiment (NEGATIVE, NEUTRAL/MIXED, POSITIVE)
-- **Domain**: Financial texts with sentiment annotations
+## Experiments
 
-## 🚀 Development Timeline
+| NB | Experiment | Key Finding |
+|----|-----------|-------------|
+| 01 | Held-out evaluation | 80.44% on FPB with FPB excluded from training |
+| 02 | DataBoost augmentation | +2.9pp accuracy, +7.8pp F1 from targeted paraphrases |
+| 03 | vs Claude Opus 4.6 | Fine-tuned model wins by 10.4pp, 800x cheaper |
+| 04 | 10-fold CV on FPB | 86.88% +/- 0.96%, comparable to published FinBERT |
+| 06 | Multi-seed robustness | Stable across 5 seeds (std < 1%) |
+| 07 | Self-training | Negative result: domain-mismatched pseudo-labels hurt |
+| 09b | BERT vs ModernBERT CV | ModernBERT wins 7/10 folds, +1.09pp mean |
+| 12 | LoRA vs full fine-tuning | LoRA outperforms full FT by +3.69pp (regularization) |
+| 15 | Error analysis | Linguistic patterns driving misclassification |
+| 16 | Confidence calibration | Model already well-calibrated (ECE ~0.02%) |
+| 18 | Long-context ablation | Context length effect on earnings call accuracy |
+| 19 | Multi-benchmark eval | Generalization across FPB, FiQA, Twitter Financial |
 
-**16-week structured development** (4 hours/week):
+## Quick Start
 
-### Phase 1: Data Foundation (Weeks 1-3)
-- ✅ **Week 1**: Data audit, label harmonization, project setup
-- 🔄 **Week 2**: Statistical analysis, GPT-4 quality control
-- 📅 **Week 3**: Dataset finalization and HuggingFace publication
+```python
+from transformers import pipeline
 
-### Phase 2: Model Development (Weeks 4-8)
-- ModernBERT architecture adaptation
-- Training pipeline with wandb/tensorboard
-- Base and Large model variants
-- Specialized domain variants
-
-### Phase 3: Paper & Tutorial Prep (Weeks 9-12)
-- Academic paper writing
-- Tutorial development
-- Conference submission
-
-### Phase 4: Community Building (Weeks 13-16)
-- Public launch and documentation
-- Community engagement
-- Production deployment guides
-
-## 🛠️ Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/ModernFinBERT.git
-cd ModernFinBERT
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start with Phase 1 data exploration
-jupyter notebook Data.ipynb
+classifier = pipeline("text-classification", model="neoyipeng/ModernFinBERT-base")
+result = classifier("The company reported strong quarterly earnings, beating analyst expectations.")
+print(result)
+# [{'label': 'POSITIVE', 'score': 0.95}]
 ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ModernFinBERT/
-├── data/                    # Financial text datasets and cleaning scripts
-├── models/                  # ModernBERT model variants and weights  
-├── scripts/                 # Training and evaluation scripts
-├── notebooks/               # Jupyter notebooks for experimentation
-├── docs/                    # Documentation and tutorials
-├── Data.ipynb              # Phase 1 implementation guide
-├── plan.md                 # Detailed 16-week development plan
-└── CLAUDE.md               # Development guidance for Claude Code
+├── notebooks/           # Experiment notebooks (NB01-NB19)
+├── scripts/             # Inference, benchmarking, data audit scripts
+├── paper/               # LaTeX paper source and figures
+├── data/                # Raw, cleaned, and processed datasets
+├── results/             # JSON results from all experiments
+├── demo/                # Production demo app
+├── MODEL_CARD.md        # HuggingFace model card
+├── plan.md              # Implementation plan for next experiments
+└── research.md          # Detailed research findings
 ```
 
-## 🎯 Success Metrics
+## Architecture
 
-- [x] **Data Foundation**: Clean, high-quality dataset
-- [ ] **Model Performance**: >94% FinancialPhraseBank accuracy
-- [ ] **Inference Speed**: <50ms per sample
-- [ ] **Community Adoption**: 100+ GitHub stars in first month
-- [ ] **Academic Impact**: Conference tutorial acceptance
-- [ ] **Industry Usage**: 3+ companies in production
+- **Base**: ModernBERT-base (149M parameters) with RoPE, Flash Attention 2, GeGLU
+- **Fine-tuning**: LoRA (r=16, alpha=32) targeting Wqkv, out_proj, Wi, Wo
+- **Training**: AdamW, lr=2e-4, cosine schedule, FP16, gradient checkpointing
 
-## 🤝 Contributing
+## Links
 
-This project follows a structured development timeline. See `CLAUDE.md` for detailed guidance on working with this codebase.
-
-## 📄 License
-
-[Add your preferred license here]
-
-## 🔗 Links
-
-- **Dataset**: [neoyipeng/financial_reasoning_aggregated](https://huggingface.co/datasets/neoyipeng/financial_reasoning_aggregated)
-- **Base Model**: [ModernBERT](https://huggingface.co/answerdotai/ModernBERT-base)
-- **Development Plan**: [plan.md](./plan.md)
-
----
-
-**Status**: 🚧 Phase 1 (Data Foundation) - Week 1 implementation ready
+- [HuggingFace Model](https://huggingface.co/neoyipeng/ModernFinBERT-base)
+- [Training Dataset](https://huggingface.co/datasets/neoyipeng/financial_reasoning_aggregated)
+- [FinancialPhraseBank](https://huggingface.co/datasets/financial_phrasebank)

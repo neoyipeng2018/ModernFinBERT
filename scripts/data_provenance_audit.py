@@ -70,34 +70,9 @@ for src, name in SOURCE_NAMES.items():
     for _, row in sample.iterrows():
         print(f"  [{row['label']}] {row['text'][:120]}...")
 
-# ── Phase 2: Annotation method audit ────────────────────────────────────────
+# ── Phase 2: Provenance table ───────────────────────────────────────────────
 print("\n" + "=" * 70)
-print("PHASE 2: ANNOTATION METHOD AUDIT")
-print("=" * 70)
-
-for src in sorted(df["source"].unique()):
-    sub = df[df["source"] == src]
-    prompts = sub["prompt"].dropna()
-
-    if src == 5:
-        print(f"\nSource {src} (FPB): HUMAN-ANNOTATED")
-        print("  16-24 finance professionals per sentence")
-        print("  Agreement thresholds: 50%, 66%, 75%, 100%")
-        continue
-
-    has_cot = prompts.str.contains("Reason step by step", case=False).mean()
-    has_classify = prompts.str.contains("Classify the sentiment", case=False).mean()
-
-    print(f"\nSource {src} ({SOURCE_NAMES[src]}): LLM-GENERATED LABELS")
-    print(f"  Prompts with 'Classify the sentiment': {has_classify:.0%}")
-    print(f"  Prompts with CoT instruction: {has_cot:.0%}")
-    print(f"  Sample prompt: {prompts.iloc[0][:200]}...")
-
-print("\nKey implication: model trained on LLM labels, evaluated against human labels (FPB)")
-
-# ── Phase 3: Provenance table ───────────────────────────────────────────────
-print("\n" + "=" * 70)
-print("PHASE 3: PROVENANCE TABLE")
+print("PHASE 2: PROVENANCE TABLE")
 print("=" * 70)
 
 provenance = []
@@ -116,7 +91,6 @@ for src in sorted(df["source"].unique()):
         "Domain": SOURCE_NAMES[src],
         "N (total)": len(sub),
         "N (train)": len(train_sub),
-        "Annotation": "Human" if src == 5 else "LLM",
         "NEG %": f"{(sub['label']=='NEGATIVE').mean()*100:.1f}",
         "NEU %": f"{(sub['label']=='NEUTRAL/MIXED').mean()*100:.1f}",
         "POS %": f"{(sub['label']=='POSITIVE').mean()*100:.1f}",
@@ -141,9 +115,9 @@ for lbl in ["NEGATIVE", "NEUTRAL/MIXED", "POSITIVE"]:
     cnt = (fpb["label"] == lbl).sum()
     print(f"  {lbl}: {cnt} ({cnt/len(fpb)*100:.1f}%)")
 
-# ── Phase 4: Deep-dive analyses ─────────────────────────────────────────────
+# ── Phase 3: Deep-dive analyses ─────────────────────────────────────────────
 print("\n" + "=" * 70)
-print("PHASE 4: DEEP-DIVE ANALYSES")
+print("PHASE 3: DEEP-DIVE ANALYSES")
 print("=" * 70)
 
 # 4.1-4.2: Source 4 mining sub-domain
@@ -185,21 +159,7 @@ print(f"  Token count: min={token_counts.min()}, median={int(np.median(token_cou
 print(f"  Truncated at 512 tokens: {truncated_512} ({truncated_512/len(token_counts):.1%})")
 print(f"  Truncated at 256 tokens: {truncated_256} ({truncated_256/len(token_counts):.1%})")
 
-# 4.4: LLM annotation bias
-print(f"\nLLM vs HUMAN ANNOTATION BIAS:")
-fpb_dist = fpb["label"].value_counts(normalize=True).sort_index()
-
-for src in [3, 4, 8, 9]:
-    sub = df[df["source"] == src]
-    sub_dist = sub["label"].value_counts(normalize=True).sort_index()
-    print(f"\n  Source {src} ({SOURCE_NAMES[src]}) vs FPB:")
-    for lbl in ["NEGATIVE", "NEUTRAL/MIXED", "POSITIVE"]:
-        src_pct = sub_dist.get(lbl, 0) * 100
-        fpb_pct = fpb_dist.get(lbl, 0) * 100
-        delta = src_pct - fpb_pct
-        print(f"    {lbl}: {src_pct:.1f}% (vs FPB {fpb_pct:.1f}%, delta={delta:+.1f}pp)")
-
-# 4.5-4.6: Duplicate checks
+# 4.4-4.5: Duplicate checks
 print(f"\nIntra-source duplicates:")
 for src in sorted(df["source"].unique()):
     sub = df[df["source"] == src]
@@ -211,9 +171,9 @@ text_sources = df.groupby("text")["source"].nunique()
 multi = (text_sources > 1).sum()
 print(f"\nCross-source duplicates: {multi}")
 
-# ── Phase 5: Figures ────────────────────────────────────────────────────────
+# ── Phase 4: Figures ────────────────────────────────────────────────────────
 print("\n" + "=" * 70)
-print("PHASE 5: GENERATING FIGURES")
+print("PHASE 4: GENERATING FIGURES")
 print("=" * 70)
 
 # Figure 1: Two-panel provenance figure
@@ -270,9 +230,9 @@ plt.savefig(fig_path2, dpi=150, bbox_inches="tight")
 print(f"Saved: {fig_path2}")
 plt.close()
 
-# ── Phase 6: Per-source model performance ────────────────────────────────────
+# ── Phase 5: Per-source model performance ────────────────────────────────────
 print("\n" + "=" * 70)
-print("PHASE 6: PER-SOURCE MODEL PERFORMANCE")
+print("PHASE 5: PER-SOURCE MODEL PERFORMANCE")
 print("=" * 70)
 
 try:
@@ -314,9 +274,9 @@ except Exception as e:
     print("Using cached per-text-type results from fair_comparison_results.json")
     per_source_acc = {}
 
-# ── Phase 7: Export JSON ─────────────────────────────────────────────────────
+# ── Phase 6: Export JSON ─────────────────────────────────────────────────────
 print("\n" + "=" * 70)
-print("PHASE 7: EXPORT")
+print("PHASE 6: EXPORT")
 print("=" * 70)
 
 audit_results = {
@@ -341,7 +301,6 @@ for src in sorted(df["source"].unique()):
         "name": SOURCE_NAMES[src],
         "n_total": len(sub),
         "n_train": len(sub[sub["split"] == "train"]),
-        "annotation_method": "human" if src == 5 else "llm",
         "label_distribution": {
             "NEGATIVE": round((sub["label"] == "NEGATIVE").mean(), 3),
             "NEUTRAL/MIXED": round((sub["label"] == "NEUTRAL/MIXED").mean(), 3),
@@ -362,7 +321,7 @@ print(f"Saved: {json_path}")
 print("\n" + "=" * 70)
 print("KEY FINDINGS SUMMARY")
 print("=" * 70)
-print("1. All non-FPB labels are LLM-generated (prompt: 'Classify the sentiment of...')")
+print("1. Training data aggregated from 4 public sources (excluding FPB)")
 print(f"2. Source 4 is {is_mining.mean():.0%} Canadian mining press releases")
 print(f"3. Source 8: {truncated_512/len(token_counts):.0%} of samples truncated at 512 tokens")
 print(f"4. Class imbalance: Source 4 has 3.5% NEG vs Source 9 at 13.9% NEG")

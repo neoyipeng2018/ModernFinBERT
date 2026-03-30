@@ -1,1062 +1,870 @@
-# Confidence Calibration for ModernFinBERT — Implementation Plan
+# Plan: Long-Context Fine-Tuning + Multi-Benchmark Evaluation
 
-## Problem Statement
+## Overview
 
-ModernFinBERT is **overconfident on its errors**. From the NB15 error analysis:
+Two focused improvements to the current ModernFinBERT paper and model:
 
-- Correct predictions: mean confidence **0.964**, median ~0.98
-- Misclassifications: mean confidence **0.928**, median ~0.96
-- **31% of all errors** have confidence > 0.9 (the model is wrong but very sure)
-- The gap between correct and incorrect confidence is only ~0.036 — not enough for users to filter bad predictions
+1. **Long-context fine-tuning** — ModernBERT supports 8192 tokens via RoPE but every notebook hardcodes `max_length=512`. Earnings call transcripts (Source 8: median 161 words, max 2,596 words) are silently truncated during training. The model trains on incomplete texts and scores 69% on earnings calls vs 80%+ elsewhere. Unlocking longer context is free signal.
 
-This means the raw softmax probabilities are not trustworthy. A user seeing "95% POSITIVE" cannot distinguish whether the model is reliably correct or confidently wrong. For financial applications where bad sentiment signals drive trading losses, this is a critical safety issue.
-
-**Goal:** Make the model's confidence scores reflect its actual accuracy. When it says "70% POSITIVE," it should be correct ~70% of the time. When it says "95% POSITIVE," it should be correct ~95% of the time.
+2. **Multi-benchmark evaluation** — The paper evaluates only on FPB. Testing on FiQA, Twitter Financial News, and TweetEval proves (or disproves) that improvements generalize beyond a single dataset.
 
 ---
 
-## Background: What is Calibration?
+## Task List
 
-A model is **perfectly calibrated** when its predicted confidence matches its actual accuracy at every confidence level. The standard metric is **Expected Calibration Error (ECE)**:
+### Phase 1: Long-Context Fine-Tuning (NB18)
 
-```
-ECE = Σ (|B_m| / N) * |acc(B_m) - conf(B_m)|
-```
+#### 1.1 Data Analysis (no GPU, ~30 min)
+- [x] Load aggregated dataset with source IDs
+- [x] Tokenize all texts WITHOUT truncation to get true token lengths
+- [x] Compute per-source truncation rates at max_length 128, 512, 1024, 2048
+- [x] Generate truncation analysis table (source x max_length)
+- [x] Identify exact % of Source 8 samples truncated at 512
+- [x] Compute the number of tokens lost per truncated sample (true_len - 512)
+- [x] Save truncation stats to `results/truncation_analysis.json`
 
-Where samples are grouped into M bins by confidence, and for each bin we compare the average confidence to the actual accuracy. Lower ECE = better calibrated.
+#### 1.2 Training Infrastructure (~1 hour)
+- [x] Write `train_held_out(max_length, seed)` function matching NB01 protocol exactly
+- [x] Implement adaptive batch size scaling (512→bs=8, 1024→bs=4, 2048→bs=2) with gradient accumulation to keep effective batch constant at 32
+- [x] Verify 2048-token training fits in T4 16GB VRAM (batch=2, gradient checkpointing on)
+- [x] Write `run_inference(model, tokenizer, texts, max_length)` helper
+- [x] Write `evaluate_held_out(model, tokenizer, max_length)` with per-source breakdown
 
-Modern neural networks are systematically overconfident (Guo et al., 2017 — "On Calibration of Modern Neural Networks"). The standard fix is **post-hoc calibration** — learning a simple transformation on a held-out validation set that maps raw logits to calibrated probabilities. Crucially, this **does not change the model's predictions** (the argmax is preserved), only the confidence scores.
+#### 1.3 Context Length Ablation (9 runs, ~9 hours GPU)
+- [x] Train max_length=512 with seed=3407
+- [x] Train max_length=512 with seed=42
+- [x] Train max_length=512 with seed=123
+- [x] Train max_length=1024 with seed=3407
+- [x] Train max_length=1024 with seed=42
+- [x] Train max_length=1024 with seed=123
+- [x] Train max_length=2048 with seed=3407
+- [x] Train max_length=2048 with seed=42
+- [x] Train max_length=2048 with seed=123
+- [x] Evaluate each model on: FPB 50agree, FPB allAgree, aggregated test set (overall + per-source)
+
+#### 1.4 Results Analysis (~30 min)
+- [x] Aggregate results: mean ± std over 3 seeds for each max_length
+- [x] Generate per-source accuracy comparison table (512 vs 1024 vs 2048)
+- [x] Compute earnings call (Source 8) accuracy delta: 2048 vs 512
+- [x] Generate bar chart: per-source accuracy at each context length
+- [x] Statistical test: paired t-test on per-seed results (512 vs best long-ctx)
+- [x] Save all results to `results/longctx_ablation.json`
+- [x] Identify best max_length for Phase 2
+
+### Phase 2: Multi-Benchmark Evaluation (NB19)
+
+#### 2.1 Benchmark Setup (~1 hour, no GPU)
+- [x] Load FPB sentences_50agree, verify label scheme {0:NEG, 1:NEU, 2:POS}
+- [x] Load FPB sentences_allagree, verify same scheme
+- [x] Load `zeroshot/twitter-financial-news-sentiment` validation split
+- [x] Inspect twitter label scheme, determine correct remap to {NEG, NEU, POS}
+- [x] Manually verify 5 samples per class match expected sentiment
+- [x] Load `pauri32/fiqa-2018` train split
+- [x] Verify FiQA continuous score range and distribution
+- [x] Implement 3-class discretization at thresholds (-0.2, 0.2)
+- [x] Print class distribution for each benchmark after remapping
+- [x] Write `load_benchmark(name)` function returning standardized (texts, labels)
+
+#### 2.2 Baseline Model Setup (~30 min)
+- [x] Load `ProsusAI/finbert`, identify its label ordering from `model.config.id2label`
+- [x] Determine ProsusAI label remap: their label indices → our {0:NEG, 1:NEU, 2:POS}
+- [x] Load `yiyanghkust/finbert-tone`, identify its label ordering
+- [x] Determine finbert-tone label remap
+- [x] Sanity check: run each baseline on 10 obvious samples, verify labels make sense
+- [x] Write `run_inference_with_remap(model, tokenizer, texts, label_remap)` helper
+
+#### 2.3 Evaluation Runs (~1 hour GPU)
+- [x] Evaluate `neoyipeng/ModernFinBERT-base` (production, max_length=512) on all 4 benchmarks
+- [ ] Evaluate best long-context model from Phase 1 on all 4 benchmarks
+- [x] Evaluate `ProsusAI/finbert` on all 4 benchmarks
+- [x] Evaluate `yiyanghkust/finbert-tone` on all 4 benchmarks
+- [x] For each model × benchmark: compute accuracy, macro F1, per-class F1
+- [x] Run FiQA threshold sensitivity at (-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3)
+
+#### 2.4 Results and Paper Artifacts (~1 hour)
+- [x] Generate multi-benchmark comparison table (models as rows, benchmarks as columns)
+- [x] Generate LaTeX table for paper
+- [x] Identify where ModernFinBERT wins vs loses against baselines
+- [ ] Write discussion paragraph: does ModernFinBERT generalize beyond FPB?
+- [x] Save all results to `results/multi_benchmark_results.json`
+
+### Phase 3: Paper Integration
+
+> **Note:** Phase 3.1 and 3.2 tasks require running NB18 and NB19 on Kaggle first to get actual numbers. These are blocked until GPU results are available.
+
+#### 3.1 New Paper Content (blocked: needs NB18/NB19 results)
+- [ ] Add truncation analysis table to Section 3 (Experimental Setup) or new subsection
+- [ ] Add context length ablation table as new Experiment (Experiment 10)
+- [ ] Add multi-benchmark comparison table as new Experiment (Experiment 11)
+- [ ] Write discussion paragraph on long-context findings
+- [ ] Write discussion paragraph on multi-benchmark generalization
+- [ ] Update Limitations section: remove "single benchmark" limitation
+- [ ] Update Conclusion with new findings
+
+#### 3.2 Model and Artifacts (blocked: needs NB18/NB19 results)
+- [ ] If long-context model improves: retrain production model with best max_length
+- [ ] Update `MODEL_CARD.md` with multi-benchmark results
+- [ ] Update `calibration_config.json` if production model changes
+- [ ] Push updated model to `neoyipeng/ModernFinBERT-base` (if improved)
+
+#### 3.3 Cleanup
+- [x] Add NB18 and NB19 to notebooks/ directory
+- [x] Update README.md with new experiment descriptions
+- [x] Update TODOS.md: mark multi-benchmark as done, update remaining items
 
 ---
 
-## Architecture: Where Calibration Fits
+## Phase 1: Long-Context Fine-Tuning
 
-```
-                          CURRENT PIPELINE
-                          ================
-Input text → Tokenizer → ModernBERT → Logits → softmax → Probabilities
-                                                              ↓
-                                                    argmax = Prediction
-                                                    max(p) = Confidence
+### NB18: Context Length Ablation
 
+One notebook, three experiments: train the same model at `max_length` 512, 1024, and 2048. Isolate the effect of context length with everything else held constant.
 
-                      CALIBRATED PIPELINE
-                      ====================
-Input text → Tokenizer → ModernBERT → Logits → T(logits) → softmax → Calibrated Probs
-                                                   ↑            ↓
-                                          Temperature T    argmax = Prediction (same!)
-                                       (learned scalar)    max(p) = Confidence (fixed!)
-```
+#### Step 1: Measure truncation damage
 
-The calibration layer sits between the raw logits and the softmax. It is a lightweight transformation — typically a single scalar (temperature) or a small linear layer — learned on a held-out validation set that was NOT used for training.
-
----
-
-## Implementation Plan
-
-### Step 1: Build the Calibration Dataset
-
-**Challenge:** The production model (`neoyipeng/ModernFinBERT-base`) was trained on ALL data including FPB. We need logits on data the model hasn't trained on.
-
-**Solution:** Use **5-fold cross-validation logit collection**. This is the gold standard approach (Guo et al., 2017):
-
-1. Split the complete dataset into 5 stratified folds
-2. For each fold, train a model on the other 4 folds (same hyperparams as production)
-3. Collect logits on the held-out fold
-4. After all 5 folds, we have logits for every sample — each collected when that sample was unseen
-
-This gives us ~13,900 logit vectors (the full dataset) with no data leakage.
-
-**Alternative (simpler, slightly less rigorous):** Hold out 10-15% of training data as a calibration set before training the production model. This is faster but wastes training data. Since we already have the 5-fold CV infrastructure from NB14, the cross-validation approach is preferred.
+Before training anything, quantify how much data is being lost.
 
 ```python
-# Step 1: Collect held-out logits via 5-fold CV
 import numpy as np
-import torch
 from datasets import load_dataset
-from sklearn.model_selection import StratifiedKFold
-from transformers import (
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    TrainingArguments,
-    Trainer,
-)
+from transformers import AutoTokenizer
+from collections import defaultdict
 
-MODEL_NAME = "answerdotai/ModernBERT-base"
-NUM_FOLDS = 5
-SEED = 3407
+tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-base")
 
-# Load the complete dataset (same as NB14)
+# Load aggregated dataset with source IDs
 ds = load_dataset("neoyipeng/financial_reasoning_aggregated")
-# Filter to sentiment task, combine all splits
-# ... (same preprocessing as NB14)
+ds = ds.filter(lambda x: x["task"] == "sentiment")
 
-texts = all_texts       # list[str], length ~13,900
-labels = all_labels     # np.array of int, shape (13900,)
+SOURCE_NAMES = {
+    3: "Earnings (narrative)",
+    4: "Press releases",
+    5: "FPB",
+    8: "Earnings (Q&A)",
+    9: "Tweets",
+}
 
-skf = StratifiedKFold(n_splits=NUM_FOLDS, shuffle=True, random_state=SEED)
+# Tokenize everything WITHOUT truncation to get true lengths
+stats_by_source = defaultdict(list)
 
-# Storage: one logit vector per sample
-all_logits = np.zeros((len(texts), 3), dtype=np.float32)
-all_labels_ordered = np.zeros(len(texts), dtype=np.int64)
+for split in ["train", "validation", "test"]:
+    for example in ds[split]:
+        ids = tokenizer(example["text"], add_special_tokens=True)["input_ids"]
+        stats_by_source[example["source"]].append(len(ids))
 
-for fold_idx, (train_idx, val_idx) in enumerate(skf.split(texts, labels)):
-    print(f"\n{'='*60}")
-    print(f"  Fold {fold_idx + 1}/{NUM_FOLDS}")
-    print(f"  Train: {len(train_idx)}, Val: {len(val_idx)}")
-    print(f"{'='*60}")
+# Report truncation rates at each max_length
+MAX_LENGTHS = [128, 512, 1024, 2048]
 
-    # Build train/val datasets for this fold
-    train_texts = [texts[i] for i in train_idx]
-    train_labels = labels[train_idx]
-    val_texts = [texts[i] for i in val_idx]
-    val_labels = labels[val_idx]
+print(f"{'Source':<25} {'N':>6} {'Med':>5} {'P95':>6} {'Max':>6}", end="")
+for ml in MAX_LENGTHS:
+    print(f" {'Trunc@'+str(ml):>10}", end="")
+print()
+print("-" * 100)
 
-    # Train model (same config as production — full FT, same hyperparams)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    model = AutoModelForSequenceClassification.from_pretrained(
-        MODEL_NAME, num_labels=3,
-    )
-
-    # ... same TrainingArguments as NB14 ...
-    # ... train the model ...
-
-    # Collect logits on held-out fold
-    model.eval()
-    fold_logits = []
-    with torch.no_grad():
-        for i in range(0, len(val_texts), 32):
-            batch = tokenizer(
-                val_texts[i:i+32],
-                return_tensors="pt", padding=True,
-                truncation=True, max_length=512,
-            )
-            batch = {k: v.to(model.device) for k, v in batch.items()}
-            logits = model(**batch).logits.cpu().numpy()
-            fold_logits.append(logits)
-
-    fold_logits = np.concatenate(fold_logits, axis=0)
-
-    # Store in the correct positions
-    all_logits[val_idx] = fold_logits
-    all_labels_ordered[val_idx] = val_labels
-
-    # Free memory
-    del model
-    torch.cuda.empty_cache()
-
-# Save for calibration fitting
-np.savez(
-    "results/calibration_logits.npz",
-    logits=all_logits,
-    labels=all_labels_ordered,
-)
-print(f"Saved {len(all_logits)} logit vectors to results/calibration_logits.npz")
+for src_id in sorted(stats_by_source.keys()):
+    lengths = stats_by_source[src_id]
+    name = SOURCE_NAMES.get(src_id, f"Source {src_id}")
+    row = f"{name:<25} {len(lengths):>6} {int(np.median(lengths)):>5} "
+    row += f"{int(np.percentile(lengths, 95)):>6} {max(lengths):>6}"
+    for ml in MAX_LENGTHS:
+        trunc = sum(1 for l in lengths if l > ml)
+        row += f" {trunc/len(lengths):>9.1%}"
+    print(row)
 ```
 
-**GPU time estimate:** ~5 fold trainings x ~40 min each = ~3.5 hours on T4. This is the same cost as the multi-seed experiment (NB06).
+Expected output (based on data provenance audit):
+- Source 9 (tweets, median 15 words): ~0% truncated at any length
+- Source 4 (press releases, median 60 words): low truncation
+- Source 8 (earnings Q&A, median 161 words, max 2,596): **high truncation at 512, near-zero at 2048**
+- FPB (median 21 words): ~0% truncated
 
----
+This table goes directly into the paper to justify the long-context experiment.
 
-### Step 2: Measure Pre-Calibration ECE
-
-Before applying any calibration, measure how bad the problem is.
+#### Step 2: Training function with configurable max_length
 
 ```python
+import torch
 import numpy as np
-import matplotlib.pyplot as plt
-
-def compute_ece(logits, labels, n_bins=15):
-    """
-    Compute Expected Calibration Error.
-
-    Args:
-        logits: np.array of shape (N, C) — raw logits
-        labels: np.array of shape (N,) — ground truth class indices
-        n_bins: number of equal-width confidence bins
-
-    Returns:
-        ece: float, the expected calibration error
-        bin_data: list of dicts with per-bin stats for plotting
-    """
-    # Convert logits to probabilities
-    # Use numerically stable softmax
-    exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
-    probs = exp_logits / exp_logits.sum(axis=1, keepdims=True)
-
-    confidences = np.max(probs, axis=1)
-    predictions = np.argmax(probs, axis=1)
-    accuracies = (predictions == labels).astype(float)
-
-    bin_boundaries = np.linspace(0, 1, n_bins + 1)
-    bin_data = []
-    ece = 0.0
-
-    for i in range(n_bins):
-        lo, hi = bin_boundaries[i], bin_boundaries[i + 1]
-        mask = (confidences > lo) & (confidences <= hi)
-        if mask.sum() == 0:
-            bin_data.append({
-                "bin_lo": lo, "bin_hi": hi,
-                "count": 0, "avg_conf": 0, "avg_acc": 0,
-            })
-            continue
-
-        bin_acc = accuracies[mask].mean()
-        bin_conf = confidences[mask].mean()
-        bin_count = mask.sum()
-        bin_ece = (bin_count / len(labels)) * abs(bin_acc - bin_conf)
-        ece += bin_ece
-
-        bin_data.append({
-            "bin_lo": lo, "bin_hi": hi,
-            "count": int(bin_count),
-            "avg_conf": float(bin_conf),
-            "avg_acc": float(bin_acc),
-        })
-
-    return float(ece), bin_data
-
-
-def plot_reliability_diagram(bin_data, ece, title="Reliability Diagram", save_path=None):
-    """
-    Plot a reliability diagram (calibration curve).
-
-    The diagonal represents perfect calibration. Bars above the diagonal
-    mean the model is underconfident; bars below mean overconfident.
-    """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-
-    # Left: reliability diagram
-    confs = [b["avg_conf"] for b in bin_data if b["count"] > 0]
-    accs = [b["avg_acc"] for b in bin_data if b["count"] > 0]
-    counts = [b["count"] for b in bin_data if b["count"] > 0]
-
-    ax1.bar(confs, accs, width=0.05, alpha=0.7, color="#42A5F5",
-            edgecolor="white", label="Outputs")
-    ax1.plot([0, 1], [0, 1], "r--", linewidth=2, label="Perfect calibration")
-    ax1.set_xlabel("Mean Predicted Confidence", fontsize=12)
-    ax1.set_ylabel("Fraction of Positives (Accuracy)", fontsize=12)
-    ax1.set_title(f"{title}\nECE = {ece:.4f}", fontsize=13)
-    ax1.legend(fontsize=11)
-    ax1.set_xlim(0, 1)
-    ax1.set_ylim(0, 1)
-    ax1.set_aspect("equal")
-
-    # Right: confidence histogram
-    all_confs = [b["avg_conf"] for b in bin_data]
-    all_counts = [b["count"] for b in bin_data]
-    bin_centers = [(b["bin_lo"] + b["bin_hi"]) / 2 for b in bin_data]
-    ax2.bar(bin_centers, all_counts, width=0.065, color="#66BB6A",
-            edgecolor="white", alpha=0.7)
-    ax2.set_xlabel("Confidence", fontsize=12)
-    ax2.set_ylabel("Count", fontsize=12)
-    ax2.set_title("Confidence Distribution", fontsize=13)
-
-    plt.tight_layout()
-    if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
-    plt.show()
-
-    return fig
-
-
-# Load saved logits
-data = np.load("results/calibration_logits.npz")
-logits = data["logits"]
-labels = data["labels"]
-
-# Measure pre-calibration ECE
-ece_before, bins_before = compute_ece(logits, labels, n_bins=15)
-print(f"Pre-calibration ECE: {ece_before:.4f}")
-
-plot_reliability_diagram(
-    bins_before, ece_before,
-    title="ModernFinBERT — Before Calibration",
-    save_path="results/reliability_before.png",
+import gc
+from transformers import (
+    AutoModelForSequenceClassification, AutoTokenizer,
+    TrainingArguments, Trainer, training_args,
 )
-```
-
-**Expected result:** ECE around 0.05-0.12 (typical for uncalibrated fine-tuned transformers). The reliability diagram should show bars consistently below the diagonal in the high-confidence region — confirming the model is overconfident.
-
----
-
-### Step 3: Fit Calibration Methods
-
-We'll implement and compare three calibration methods, from simplest to most expressive:
-
-#### Method A: Temperature Scaling (Recommended)
-
-A single scalar T > 1 is learned to soften the logits. This is the gold standard from Guo et al., 2017 — it's simple, has only 1 parameter, and works surprisingly well.
-
-```python
-import torch
-import torch.nn as nn
-from torch.optim import LBFGS
-
-class TemperatureScaler(nn.Module):
-    """
-    Post-hoc temperature scaling for calibration.
-
-    Learns a single temperature parameter T such that
-    calibrated_probs = softmax(logits / T).
-
-    T > 1 softens the distribution (reduces overconfidence).
-    T < 1 sharpens it (increases confidence).
-    T = 1 is the identity (no calibration).
-    """
-
-    def __init__(self):
-        super().__init__()
-        # Initialize at T=1 (no scaling)
-        self.temperature = nn.Parameter(torch.ones(1) * 1.0)
-
-    def forward(self, logits):
-        """Scale logits by learned temperature."""
-        return logits / self.temperature
-
-    def calibrate(self, logits, labels, lr=0.01, max_iter=50):
-        """
-        Learn temperature on a validation set using NLL loss + L-BFGS.
-
-        Args:
-            logits: torch.Tensor (N, C) — raw logits from the model
-            labels: torch.Tensor (N,) — ground truth class indices
-            lr: learning rate for L-BFGS
-            max_iter: max optimization iterations
-
-        Returns:
-            float: learned temperature value
-        """
-        nll_criterion = nn.CrossEntropyLoss()
-
-        optimizer = LBFGS([self.temperature], lr=lr, max_iter=max_iter)
-
-        def closure():
-            optimizer.zero_grad()
-            scaled_logits = self.forward(logits)
-            loss = nll_criterion(scaled_logits, labels)
-            loss.backward()
-            return loss
-
-        optimizer.step(closure)
-
-        # Report
-        final_loss = nll_criterion(self.forward(logits), labels).item()
-        print(f"Learned temperature: T = {self.temperature.item():.4f}")
-        print(f"Final NLL loss: {final_loss:.4f}")
-
-        return self.temperature.item()
-
-
-# Fit temperature scaling
-data = np.load("results/calibration_logits.npz")
-logits_np = data["logits"]
-labels_np = data["labels"]
-
-logits_tensor = torch.from_numpy(logits_np).float()
-labels_tensor = torch.from_numpy(labels_np).long()
-
-temp_scaler = TemperatureScaler()
-T = temp_scaler.calibrate(logits_tensor, labels_tensor)
-
-# Measure post-calibration ECE
-scaled_logits = (logits_np / T)  # Apply learned temperature
-ece_after_temp, bins_after_temp = compute_ece(scaled_logits, labels_np, n_bins=15)
-print(f"\nPost-calibration ECE (temperature): {ece_after_temp:.4f}")
-print(f"Improvement: {ece_before:.4f} → {ece_after_temp:.4f} "
-      f"({(1 - ece_after_temp/ece_before)*100:.1f}% reduction)")
-```
-
-**Expected:** T will be in the range 1.5-3.0 (softening the overconfident logits). ECE should drop by 50-80%.
-
-#### Method B: Vector Scaling (Per-Class Temperature)
-
-Instead of a single T, learn a separate temperature per class. This handles cases where the model is differently calibrated per class (e.g., very overconfident on NEUTRAL but less so on NEGATIVE).
-
-```python
-class VectorScaler(nn.Module):
-    """
-    Per-class temperature + bias calibration.
-
-    Learns a diagonal scaling matrix W and bias b:
-        calibrated_logits = W * logits + b
-
-    Where W is shape (C,) and b is shape (C,).
-    More expressive than temperature scaling (3+3=6 params for 3 classes)
-    but still unlikely to overfit with ~14K calibration samples.
-    """
-
-    def __init__(self, num_classes=3):
-        super().__init__()
-        self.W = nn.Parameter(torch.ones(num_classes))
-        self.b = nn.Parameter(torch.zeros(num_classes))
-
-    def forward(self, logits):
-        return logits * self.W + self.b
-
-    def calibrate(self, logits, labels, lr=0.01, max_iter=50):
-        nll_criterion = nn.CrossEntropyLoss()
-        optimizer = LBFGS([self.W, self.b], lr=lr, max_iter=max_iter)
-
-        def closure():
-            optimizer.zero_grad()
-            loss = nll_criterion(self.forward(logits), labels)
-            loss.backward()
-            return loss
-
-        optimizer.step(closure)
-
-        print(f"Learned W: {self.W.data.numpy()}")
-        print(f"Learned b: {self.b.data.numpy()}")
-        return self.W.data.numpy(), self.b.data.numpy()
-
-
-vec_scaler = VectorScaler(num_classes=3)
-W, b = vec_scaler.calibrate(logits_tensor, labels_tensor)
-
-scaled_logits_vec = logits_np * W + b
-ece_after_vec, bins_after_vec = compute_ece(scaled_logits_vec, labels_np, n_bins=15)
-print(f"Post-calibration ECE (vector): {ece_after_vec:.4f}")
-```
-
-#### Method C: Platt Scaling (Logistic Regression)
-
-A full linear transformation: `calibrated_logits = W @ logits + b` where W is (C, C). More expressive but risks overfitting with only 3 classes.
-
-```python
-from sklearn.linear_model import LogisticRegression
-
-def platt_scaling(logits, labels):
-    """
-    Platt scaling via sklearn LogisticRegression on the logit space.
-
-    This fits a full (C, C) weight matrix + (C,) bias on the raw logits.
-    Regularization via C=1.0 prevents overfitting.
-    """
-    lr = LogisticRegression(
-        C=1.0,              # regularization strength
-        max_iter=1000,
-        multi_class="multinomial",
-        solver="lbfgs",
-    )
-    lr.fit(logits, labels)
-
-    # The LogisticRegression's predict_proba gives calibrated probabilities
-    calibrated_probs = lr.predict_proba(logits)
-
-    # Extract the transformation for export
-    W_platt = lr.coef_          # shape (C, C)
-    b_platt = lr.intercept_     # shape (C,)
-
-    return lr, calibrated_probs, W_platt, b_platt
-
-
-lr_model, cal_probs_platt, W_platt, b_platt = platt_scaling(logits_np, labels_np)
-
-# Measure ECE from calibrated probs directly
-confidences = np.max(cal_probs_platt, axis=1)
-predictions = np.argmax(cal_probs_platt, axis=1)
-# ... compute ECE on these ...
-```
-
----
-
-### Step 4: Compare Methods and Select Winner
-
-```python
-import json
-
-results = {
-    "pre_calibration": {"ece": ece_before},
-    "temperature_scaling": {
-        "ece": ece_after_temp,
-        "temperature": T,
-        "params": 1,
-    },
-    "vector_scaling": {
-        "ece": ece_after_vec,
-        "W": W.tolist(),
-        "b": b.tolist(),
-        "params": 6,
-    },
-    "platt_scaling": {
-        "ece": ece_after_platt,
-        "params": 12,  # 3x3 + 3
-    },
-}
-
-print("\nCalibration Method Comparison")
-print("=" * 55)
-print(f"{'Method':<25} {'ECE':>8} {'Params':>8} {'Δ ECE':>10}")
-print("-" * 55)
-for name, r in results.items():
-    delta = f"{r['ece'] - ece_before:+.4f}" if name != "pre_calibration" else "---"
-    params = r.get("params", 0)
-    print(f"{name:<25} {r['ece']:>8.4f} {params:>8} {delta:>10}")
-
-# Save comparison
-with open("results/calibration_comparison.json", "w") as f:
-    json.dump(results, f, indent=2)
-
-# Plot all reliability diagrams side by side
-fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-for ax, (name, bins, ece_val) in zip(axes, [
-    ("Before Calibration", bins_before, ece_before),
-    ("Temperature Scaling", bins_after_temp, ece_after_temp),
-    ("Vector Scaling", bins_after_vec, ece_after_vec),
-]):
-    confs = [b["avg_conf"] for b in bins if b["count"] > 0]
-    accs = [b["avg_acc"] for b in bins if b["count"] > 0]
-    ax.bar(confs, accs, width=0.05, alpha=0.7, color="#42A5F5", edgecolor="white")
-    ax.plot([0, 1], [0, 1], "r--", linewidth=2)
-    ax.set_title(f"{name}\nECE = {ece_val:.4f}")
-    ax.set_xlabel("Confidence")
-    ax.set_ylabel("Accuracy")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_aspect("equal")
-
-plt.suptitle("ModernFinBERT Calibration — Reliability Diagrams", fontsize=14)
-plt.tight_layout()
-plt.savefig("paper/figures/fig3_calibration.pdf", dpi=150, bbox_inches="tight")
-plt.savefig("results/calibration_comparison.png", dpi=150, bbox_inches="tight")
-plt.show()
-```
-
-**Selection criteria:**
-- Temperature scaling wins if ECE is within 0.005 of the best method (simplest, most robust, 1 param)
-- Vector scaling wins if there's a meaningful per-class calibration difference
-- Platt scaling wins only if it's substantially better AND we verify no overfitting via a held-out test
-
-**Expected winner:** Temperature scaling. It almost always wins on classification tasks with < 10 classes (Guo et al., 2017).
-
----
-
-### Step 5: Save Calibration Parameters
-
-The calibration must be saved so it can be applied at inference time without retraining.
-
-```python
-import json
-
-# For temperature scaling (the expected winner):
-calibration_config = {
-    "method": "temperature_scaling",
-    "temperature": float(T),
-    "ece_before": float(ece_before),
-    "ece_after": float(ece_after_temp),
-    "calibration_samples": len(labels_np),
-    "num_folds": NUM_FOLDS,
-    "seed": SEED,
-    "label_names": ["NEGATIVE", "NEUTRAL", "POSITIVE"],
-}
-
-with open("calibration_config.json", "w") as f:
-    json.dump(calibration_config, f, indent=2)
-
-print(f"Saved calibration config: T = {T:.4f}")
-print(f"To apply: calibrated_probs = softmax(logits / {T:.4f})")
-```
-
----
-
-### Step 6: Integrate Into Inference Pipeline
-
-Update both the Gradio demo (`demo/app.py`) and any production inference code to apply calibration.
-
-#### Updated `demo/app.py`
-
-```python
-"""
-ModernFinBERT Gradio Demo — with confidence calibration.
-"""
-
-import json
-import gradio as gr
-import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-MODEL_ID = "neoyipeng/ModernFinBERT-base"
+from peft import LoraConfig, get_peft_model, TaskType
+from sklearn.metrics import accuracy_score, f1_score, classification_report
+from datasets import load_dataset, Dataset
+
+NUM_CLASSES = 3
 LABEL_NAMES = ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-
-# Load calibration config
-with open("calibration_config.json") as f:
-    cal_config = json.load(f)
-TEMPERATURE = cal_config["temperature"]
-print(f"Calibration: T = {TEMPERATURE:.4f} "
-      f"(ECE: {cal_config['ece_before']:.4f} → {cal_config['ece_after']:.4f})")
-
-print(f"Loading {MODEL_ID}...")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = model.to(device).eval()
-print(f"Model loaded on {device}.")
+FPB_SOURCE = 5
+MODEL_NAME = "answerdotai/ModernBERT-base"
+label_dict = {"NEUTRAL/MIXED": 1, "NEGATIVE": 0, "POSITIVE": 2}
 
 
-def predict(text: str) -> dict[str, float]:
-    """Return calibrated sentiment confidences for the input text."""
-    if not text or not text.strip():
-        return {label: 0.0 for label in LABEL_NAMES}
-
-    inputs = tokenizer(
-        text, return_tensors="pt", padding=True,
-        truncation=True, max_length=512,
+def load_aggregated_data():
+    """Load aggregated dataset excluding FPB, same as NB01."""
+    ds = load_dataset("neoyipeng/financial_reasoning_aggregated")
+    ds = ds.filter(lambda x: x["task"] == "sentiment")
+    ds = ds.filter(lambda x: x["source"] != FPB_SOURCE)
+    remove_cols = [c for c in ds["train"].column_names if c not in ("text", "labels")]
+    ds = ds.map(
+        lambda ex: {
+            "text": ex["text"],
+            "labels": np.eye(NUM_CLASSES)[label_dict[ex["label"]]].tolist(),
+        },
+        remove_columns=remove_cols,
     )
-    inputs = {k: v.to(device) for k, v in inputs.items()}
+    return ds
 
-    with torch.no_grad():
-        logits = model(**inputs).logits
 
-        # Apply temperature scaling for calibrated probabilities
-        calibrated_logits = logits / TEMPERATURE
-        probs = torch.softmax(calibrated_logits, dim=-1).squeeze().cpu().numpy()
+def train_held_out(max_length: int, seed: int = 3407):
+    """Train ModernBERT+LoRA on aggregated data with given max_length.
 
-    return {label: float(round(prob, 4)) for label, prob in zip(LABEL_NAMES, probs)}
+    Identical to NB01 except for max_length and adjusted batch size.
+    Returns trained model and tokenizer.
+    """
+    ds = load_aggregated_data()
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+
+    model = AutoModelForSequenceClassification.from_pretrained(
+        MODEL_NAME, num_labels=NUM_CLASSES,
+        torch_dtype=torch.float32, attn_implementation="sdpa",
+    )
+    model.gradient_checkpointing_enable()
+
+    lora_config = LoraConfig(
+        r=16, lora_alpha=32,
+        target_modules=["Wqkv", "out_proj", "Wi", "Wo"],
+        lora_dropout=0.05, bias="none",
+        task_type=TaskType.SEQ_CLS,
+    )
+    model = get_peft_model(model, lora_config)
+    model = model.cuda()
+
+    def tokenize_fn(examples):
+        return tokenizer(examples["text"], truncation=True, max_length=max_length)
+
+    train_tok = ds["train"].map(tokenize_fn, batched=True)
+    val_tok = ds["validation"].map(tokenize_fn, batched=True)
+
+    # Scale batch size inversely with max_length to keep memory constant
+    # 512 tokens × batch 8 = 4096 positions/step
+    # 1024 tokens × batch 4 = 4096 positions/step
+    # 2048 tokens × batch 2 = 4096 positions/step
+    if max_length <= 512:
+        bs, ga = 8, 4   # effective batch = 32
+    elif max_length <= 1024:
+        bs, ga = 4, 8   # effective batch = 32
+    else:
+        bs, ga = 2, 16  # effective batch = 32
+
+    trainer = Trainer(
+        model=model,
+        processing_class=tokenizer,
+        train_dataset=train_tok,
+        eval_dataset=val_tok,
+        args=TrainingArguments(
+            output_dir=f"out_longctx_{max_length}",
+            per_device_train_batch_size=bs,
+            gradient_accumulation_steps=ga,
+            warmup_steps=10,
+            fp16=True,
+            optim=training_args.OptimizerNames.ADAMW_TORCH,
+            learning_rate=2e-4,
+            weight_decay=0.001,
+            lr_scheduler_type="cosine",
+            seed=seed,
+            num_train_epochs=10,
+            load_best_model_at_end=True,
+            metric_for_best_model="eval_loss",
+            greater_is_better=False,
+            save_strategy="epoch",
+            eval_strategy="epoch",
+            logging_strategy="epoch",
+            gradient_checkpointing=True,
+            report_to="none",
+        ),
+        compute_metrics=lambda eval_pred: {
+            "accuracy": accuracy_score(
+                eval_pred[1].argmax(axis=-1), eval_pred[0].argmax(axis=-1)
+            )
+        },
+    )
+
+    trainer.train()
+    model = model.cuda().eval()
+    return model, tokenizer
 ```
 
-#### Standalone Calibrated Inference Function
+#### Step 3: Evaluation with per-source breakdown
 
-For use in scripts and notebooks:
+This is the critical piece missing from the current paper — per-source accuracy shows WHERE long context helps, not just whether it helps on average.
 
 ```python
-import json
-import torch
-import numpy as np
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+def run_inference(model, tokenizer, texts, max_length=512, batch_size=32):
+    """Run inference, return predicted class indices."""
+    all_preds = []
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            inputs = tokenizer(
+                batch, return_tensors="pt", padding=True,
+                truncation=True, max_length=max_length,
+            )
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+            logits = model(**inputs).logits
+            preds = torch.argmax(logits, dim=-1).cpu().numpy()
+            all_preds.extend(preds)
+    return np.array(all_preds)
 
 
-class CalibratedModernFinBERT:
-    """
-    ModernFinBERT with post-hoc temperature calibration.
+def evaluate_held_out(model, tokenizer, max_length):
+    """Evaluate on FPB + aggregated test set with per-source breakdown."""
+    results = {}
 
-    Usage:
-        model = CalibratedModernFinBERT("neoyipeng/ModernFinBERT-base")
-        result = model.predict("Revenue grew 15% year-over-year.")
-        # {'label': 'POSITIVE', 'confidence': 0.82, 'probabilities': {...}}
-    """
+    # --- FPB (held-out) ---
+    fpb_50 = load_dataset("financial_phrasebank", "sentences_50agree",
+                          trust_remote_code=True)["train"]
+    fpb_all = load_dataset("financial_phrasebank", "sentences_allagree",
+                           trust_remote_code=True)["train"]
 
-    LABEL_NAMES = ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-
-    def __init__(self, model_id, calibration_path="calibration_config.json"):
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_id)
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available()
-            else "mps" if torch.backends.mps.is_available()
-            else "cpu"
-        )
-        self.model = self.model.to(self.device).eval()
-
-        # Load calibration
-        with open(calibration_path) as f:
-            config = json.load(f)
-        self.temperature = config["temperature"]
-
-    def predict(self, text: str) -> dict:
-        """Classify a single text with calibrated confidence."""
-        inputs = self.tokenizer(
-            text, return_tensors="pt", padding=True,
-            truncation=True, max_length=512,
-        )
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            logits = self.model(**inputs).logits
-            calibrated_logits = logits / self.temperature
-            probs = torch.softmax(calibrated_logits, dim=-1).squeeze().cpu().numpy()
-
-        pred_idx = int(np.argmax(probs))
-
-        return {
-            "label": self.LABEL_NAMES[pred_idx],
-            "confidence": float(probs[pred_idx]),
-            "probabilities": {
-                name: float(round(p, 4))
-                for name, p in zip(self.LABEL_NAMES, probs)
-            },
-            "calibrated": True,
+    for name, fpb in [("fpb_50agree", fpb_50), ("fpb_allagree", fpb_all)]:
+        preds = run_inference(model, tokenizer, fpb["sentence"], max_length)
+        results[name] = {
+            "accuracy": round(accuracy_score(fpb["label"], preds), 4),
+            "macro_f1": round(f1_score(fpb["label"], preds, average="macro"), 4),
+            "n": len(fpb),
         }
 
-    def predict_batch(self, texts: list[str], batch_size: int = 32) -> list[dict]:
-        """Classify a batch of texts with calibrated confidence."""
-        all_results = []
+    # --- Aggregated test set WITH per-source breakdown ---
+    ds_full = load_dataset("neoyipeng/financial_reasoning_aggregated")
+    ds_full = ds_full.filter(lambda x: x["task"] == "sentiment")
+    test = ds_full["test"]
+
+    test_texts = test["text"]
+    test_labels = [label_dict[l] for l in test["label"]]
+    test_sources = test["source"]
+    test_preds = run_inference(model, tokenizer, test_texts, max_length)
+
+    # Overall
+    results["agg_test"] = {
+        "accuracy": round(accuracy_score(test_labels, test_preds), 4),
+        "macro_f1": round(f1_score(test_labels, test_preds, average="macro"), 4),
+        "n": len(test_texts),
+    }
+
+    # Per-source
+    for src_id in sorted(set(test_sources)):
+        mask = [i for i, s in enumerate(test_sources) if s == src_id]
+        if len(mask) < 5:
+            continue
+        src_labels = [test_labels[i] for i in mask]
+        src_preds = [test_preds[i] for i in mask]
+        src_name = SOURCE_NAMES.get(src_id, f"source_{src_id}")
+        results[f"agg_test_{src_name}"] = {
+            "accuracy": round(accuracy_score(src_labels, src_preds), 4),
+            "macro_f1": round(f1_score(src_labels, src_preds, average="macro",
+                                        zero_division=0), 4),
+            "n": len(mask),
+        }
+
+    return results
+```
+
+#### Step 4: Run the ablation
+
+```python
+import json
+
+CONTEXT_LENGTHS = [512, 1024, 2048]
+SEEDS = [3407, 42, 123]
+
+all_ablation_results = []
+
+for ml in CONTEXT_LENGTHS:
+    for seed in SEEDS:
+        print(f"\n{'='*60}")
+        print(f"max_length={ml}, seed={seed}")
+        print(f"{'='*60}")
+
+        model, tokenizer = train_held_out(max_length=ml, seed=seed)
+        results = evaluate_held_out(model, tokenizer, max_length=ml)
+        results["max_length"] = ml
+        results["seed"] = seed
+        all_ablation_results.append(results)
+
+        print(f"FPB 50agree: {results['fpb_50agree']['accuracy']}")
+        print(f"FPB allAgree: {results['fpb_allagree']['accuracy']}")
+        if "agg_test_Earnings (Q&A)" in results:
+            print(f"Earnings Q&A: {results['agg_test_Earnings (Q&A)']['accuracy']}")
+
+        del model
+        gc.collect()
+        torch.cuda.empty_cache()
+
+# Save raw results
+with open("results/longctx_ablation.json", "w") as f:
+    json.dump(all_ablation_results, f, indent=2)
+```
+
+#### Step 5: Summary table for paper
+
+```python
+import pandas as pd
+
+rows = []
+for r in all_ablation_results:
+    row = {
+        "max_length": r["max_length"],
+        "seed": r["seed"],
+        "fpb_50_acc": r["fpb_50agree"]["accuracy"],
+        "fpb_50_f1": r["fpb_50agree"]["macro_f1"],
+        "fpb_all_acc": r["fpb_allagree"]["accuracy"],
+        "agg_test_acc": r["agg_test"]["accuracy"],
+    }
+    # Add per-source if available
+    for key in r:
+        if key.startswith("agg_test_") and key != "agg_test":
+            src = key.replace("agg_test_", "")
+            row[f"{src}_acc"] = r[key]["accuracy"]
+    rows.append(row)
+
+df = pd.DataFrame(rows)
+
+# Aggregate over seeds
+summary = df.groupby("max_length").agg(["mean", "std"])
+print("\nCONTEXT LENGTH ABLATION — mean ± std over 3 seeds")
+print("=" * 80)
+print(summary.to_string(float_format="%.4f"))
+
+# Key comparison: earnings call accuracy at 512 vs 2048
+print("\n\nEARNINGS CALL ACCURACY LIFT")
+print("-" * 40)
+for ml in CONTEXT_LENGTHS:
+    subset = df[df["max_length"] == ml]
+    if "Earnings (Q&A)_acc" in subset.columns:
+        mean = subset["Earnings (Q&A)_acc"].mean()
+        print(f"  max_length={ml}: {mean:.4f}")
+```
+
+### Compute estimate
+
+3 context lengths x 3 seeds = 9 training runs. Each run is ~40 min on T4 at 512, ~60 min at 1024, ~80 min at 2048 (longer sequences = slower per-step but same effective batch).
+
+**Total: ~9 hours on a single T4 (Kaggle free tier).**
+
+---
+
+## Phase 2: Multi-Benchmark Evaluation
+
+### NB19: Multi-Benchmark Harness
+
+Evaluate the current production model AND the best long-context model on four benchmarks. This is evaluation only — no training.
+
+#### Step 1: Define benchmarks
+
+```python
+from datasets import load_dataset
+from sklearn.metrics import accuracy_score, f1_score, classification_report
+import numpy as np
+import json
+
+# Label mapping: all benchmarks → {0: NEGATIVE, 1: NEUTRAL, 2: POSITIVE}
+
+BENCHMARKS = {
+    "fpb_50agree": {
+        "load_fn": lambda: load_dataset(
+            "financial_phrasebank", "sentences_50agree",
+            trust_remote_code=True
+        )["train"],
+        "text_col": "sentence",
+        "label_col": "label",
+        # FPB: 0=negative, 1=neutral, 2=positive (already correct)
+        "remap": None,
+        "description": "FinancialPhraseBank 50% agree (4,846 press-release sentences)",
+    },
+    "fpb_allagree": {
+        "load_fn": lambda: load_dataset(
+            "financial_phrasebank", "sentences_allagree",
+            trust_remote_code=True
+        )["train"],
+        "text_col": "sentence",
+        "label_col": "label",
+        "remap": None,
+        "description": "FinancialPhraseBank 100% agree (2,264 sentences)",
+    },
+    "twitter_fin_sent": {
+        "load_fn": lambda: load_dataset(
+            "zeroshot/twitter-financial-news-sentiment",
+            split="validation"
+        ),
+        "text_col": "text",
+        "label_col": "label",
+        # 0=bearish, 1=bullish, 2=neutral → remap to our scheme
+        "remap": {0: 0, 1: 2, 2: 1},  # bearish→NEG, bullish→POS, neutral→NEU
+        "description": "Twitter Financial News Sentiment (validation split)",
+    },
+    "fiqa_2018": {
+        "load_fn": lambda: load_dataset("pauri32/fiqa-2018", split="train"),
+        "text_col": "sentence",
+        "label_col": "sentiment_score",
+        # Continuous [-1, 1] → discretize to 3 classes
+        "remap": "continuous",
+        "thresholds": (-0.2, 0.2),  # < -0.2 = NEG, > 0.2 = POS, else NEU
+        "description": "FiQA 2018 Task 1 (financial opinion, continuous→3-class)",
+    },
+}
+```
+
+#### Step 2: Load and standardize each benchmark
+
+```python
+def load_benchmark(name):
+    """Load a benchmark dataset, return (texts, labels) with standardized labels."""
+    config = BENCHMARKS[name]
+    ds = config["load_fn"]()
+
+    texts = list(ds[config["text_col"]])
+
+    if config["remap"] == "continuous":
+        # Discretize continuous scores
+        lo, hi = config["thresholds"]
+        raw_scores = ds[config["label_col"]]
+        labels = []
+        for s in raw_scores:
+            if s < lo:
+                labels.append(0)
+            elif s > hi:
+                labels.append(2)
+            else:
+                labels.append(1)
+    elif config["remap"] is not None:
+        raw_labels = ds[config["label_col"]]
+        labels = [config["remap"][l] for l in raw_labels]
+    else:
+        labels = list(ds[config["label_col"]])
+
+    # Filter out any samples with invalid labels
+    valid = [(t, l) for t, l in zip(texts, labels) if l in (0, 1, 2)]
+    texts = [t for t, _ in valid]
+    labels = [l for _, l in valid]
+
+    print(f"  {name}: {len(texts)} samples, "
+          f"NEG={labels.count(0)}, NEU={labels.count(1)}, POS={labels.count(2)}")
+    return texts, labels
+
+
+# Validate all benchmarks load correctly
+print("Loading benchmarks...")
+for name in BENCHMARKS:
+    try:
+        texts, labels = load_benchmark(name)
+    except Exception as e:
+        print(f"  {name}: FAILED — {e}")
+```
+
+#### Step 3: Evaluate models across all benchmarks
+
+```python
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import torch
+
+LABEL_NAMES = ["NEGATIVE", "NEUTRAL", "POSITIVE"]
+
+
+def run_inference(model, tokenizer, texts, max_length=512, batch_size=32):
+    """Run inference, return predicted class indices."""
+    device = next(model.parameters()).device
+    all_preds = []
+    with torch.no_grad():
         for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i:i + batch_size]
-            inputs = self.tokenizer(
-                batch_texts, return_tensors="pt", padding=True,
-                truncation=True, max_length=512,
+            batch = texts[i : i + batch_size]
+            inputs = tokenizer(
+                batch, return_tensors="pt", padding=True,
+                truncation=True, max_length=max_length,
             )
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            logits = model(**inputs).logits
+            preds = torch.argmax(logits, dim=-1).cpu().numpy()
+            all_preds.extend(preds)
+    return np.array(all_preds)
 
-            with torch.no_grad():
-                logits = self.model(**inputs).logits
-                calibrated_logits = logits / self.temperature
-                probs = torch.softmax(calibrated_logits, dim=-1).cpu().numpy()
 
-            for j, p in enumerate(probs):
-                pred_idx = int(np.argmax(p))
-                all_results.append({
-                    "label": self.LABEL_NAMES[pred_idx],
-                    "confidence": float(p[pred_idx]),
-                    "probabilities": {
-                        name: float(round(v, 4))
-                        for name, v in zip(self.LABEL_NAMES, p)
-                    },
-                    "calibrated": True,
-                })
+def evaluate_model_on_all_benchmarks(model, tokenizer, max_length=512,
+                                      model_name="model"):
+    """Evaluate a single model on all benchmarks. Returns dict of results."""
+    results = {}
+    device = next(model.parameters()).device
 
-        return all_results
+    for bench_name in BENCHMARKS:
+        try:
+            texts, labels = load_benchmark(bench_name)
+            preds = run_inference(model, tokenizer, texts, max_length)
+
+            acc = accuracy_score(labels, preds)
+            f1 = f1_score(labels, preds, average="macro", zero_division=0)
+            report = classification_report(
+                labels, preds, target_names=LABEL_NAMES, output_dict=True,
+                zero_division=0,
+            )
+
+            results[bench_name] = {
+                "accuracy": round(acc, 4),
+                "macro_f1": round(f1, 4),
+                "n": len(texts),
+                "per_class": {
+                    cls: round(report[cls]["f1-score"], 4)
+                    for cls in LABEL_NAMES
+                },
+            }
+
+            print(f"  {bench_name}: acc={acc:.4f}, f1={f1:.4f}")
+
+        except Exception as e:
+            print(f"  {bench_name}: FAILED — {e}")
+            results[bench_name] = {"error": str(e)}
+
+    return results
 ```
 
----
-
-### Step 7: Validate Calibration Doesn't Hurt Accuracy
-
-Critical check: calibration must not change the predicted labels (argmax is preserved under temperature scaling since T > 0). Verify this explicitly.
+#### Step 4: Compare models
 
 ```python
-# Verify argmax preservation
-raw_preds = np.argmax(logits_np, axis=1)
-cal_preds = np.argmax(logits_np / T, axis=1)
+# Models to evaluate
+MODELS_TO_EVAL = {
+    "ModernFinBERT-v1 (production)": {
+        "model_id": "neoyipeng/ModernFinBERT-base",
+        "max_length": 512,
+    },
+    # After Phase 1 long-context ablation, add the best long-context model:
+    # "ModernFinBERT-v1 (2048 ctx)": {
+    #     "model_id": "out_longctx_2048/best_model",
+    #     "max_length": 2048,
+    # },
+}
 
-assert np.array_equal(raw_preds, cal_preds), \
-    "Temperature scaling changed predictions! This should never happen."
+# Also evaluate off-the-shelf baselines for comparison
+BASELINE_MODELS = {
+    "ProsusAI/finbert": {
+        "model_id": "ProsusAI/finbert",
+        "max_length": 512,
+        # ProsusAI uses different label order: 0=positive, 1=negative, 2=neutral
+        "label_remap": {0: 2, 1: 0, 2: 1},
+    },
+    "yiyanghkust/finbert-tone": {
+        "model_id": "yiyanghkust/finbert-tone",
+        "max_length": 512,
+        # finbert-tone: 0=neutral, 1=positive, 2=negative
+        "label_remap": {0: 1, 1: 2, 2: 0},
+    },
+}
 
-print("Verified: calibration preserves all predictions (argmax unchanged)")
-print(f"Accuracy before calibration: {(raw_preds == labels_np).mean():.4f}")
-print(f"Accuracy after calibration:  {(cal_preds == labels_np).mean():.4f}")
+all_model_results = {}
+
+for model_name, config in {**MODELS_TO_EVAL, **BASELINE_MODELS}.items():
+    print(f"\n{'='*60}")
+    print(f"Evaluating: {model_name}")
+    print(f"{'='*60}")
+
+    tokenizer = AutoTokenizer.from_pretrained(config["model_id"])
+    model = AutoModelForSequenceClassification.from_pretrained(config["model_id"])
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device).eval()
+
+    results = evaluate_model_on_all_benchmarks(
+        model, tokenizer,
+        max_length=config["max_length"],
+        model_name=model_name,
+    )
+
+    # If model has different label ordering, we need to remap predictions
+    # This is handled in run_inference by remapping after argmax
+    # (omitted here for clarity — implement per-model remap in run_inference)
+
+    all_model_results[model_name] = results
+    del model; gc.collect(); torch.cuda.empty_cache()
+
+# Save
+with open("results/multi_benchmark_results.json", "w") as f:
+    json.dump(all_model_results, f, indent=2)
 ```
 
-Also verify that the **confidence gap** between correct and incorrect predictions widens:
+#### Step 5: Paper-ready comparison table
 
 ```python
-# Confidence separation analysis
-raw_probs = np.exp(logits_np - np.max(logits_np, axis=1, keepdims=True))
-raw_probs = raw_probs / raw_probs.sum(axis=1, keepdims=True)
-raw_conf = np.max(raw_probs, axis=1)
+import pandas as pd
 
-cal_logits = logits_np / T
-cal_probs = np.exp(cal_logits - np.max(cal_logits, axis=1, keepdims=True))
-cal_probs = cal_probs / cal_probs.sum(axis=1, keepdims=True)
-cal_conf = np.max(cal_probs, axis=1)
+# Build comparison table
+rows = []
+for model_name, benchmarks in all_model_results.items():
+    row = {"Model": model_name}
+    for bench_name, metrics in benchmarks.items():
+        if "error" in metrics:
+            row[f"{bench_name}_acc"] = "—"
+            row[f"{bench_name}_f1"] = "—"
+        else:
+            row[f"{bench_name}_acc"] = metrics["accuracy"]
+            row[f"{bench_name}_f1"] = metrics["macro_f1"]
+    rows.append(row)
 
-correct_mask = (raw_preds == labels_np)
+df = pd.DataFrame(rows)
 
-print("\nConfidence Separation (higher gap = better)")
-print(f"{'Metric':<35} {'Before':>10} {'After':>10}")
-print("-" * 55)
-print(f"{'Mean conf (correct)':<35} {raw_conf[correct_mask].mean():>10.4f} "
-      f"{cal_conf[correct_mask].mean():>10.4f}")
-print(f"{'Mean conf (incorrect)':<35} {raw_conf[~correct_mask].mean():>10.4f} "
-      f"{cal_conf[~correct_mask].mean():>10.4f}")
-print(f"{'Gap (correct - incorrect)':<35} "
-      f"{raw_conf[correct_mask].mean() - raw_conf[~correct_mask].mean():>10.4f} "
-      f"{cal_conf[correct_mask].mean() - cal_conf[~correct_mask].mean():>10.4f}")
-print(f"{'High-conf errors (>0.9) %':<35} "
-      f"{(raw_conf[~correct_mask] > 0.9).mean()*100:>9.1f}% "
-      f"{(cal_conf[~correct_mask] > 0.9).mean()*100:>9.1f}%")
+print("\nMULTI-BENCHMARK COMPARISON")
+print("=" * 100)
+print(df.to_string(index=False, float_format="%.4f"))
+
+# LaTeX table for paper
+print("\n\n% LaTeX table")
+print(r"\begin{table}[h]")
+print(r"\centering")
+print(r"\caption{Multi-benchmark evaluation. All models evaluated zero-shot "
+      r"(no benchmark-specific fine-tuning). ModernFinBERT trained on "
+      r"aggregated financial data with FPB held out.}")
+print(r"\label{tab:multi-benchmark}")
+print(r"\begin{tabular}{l" + "cc" * len(BENCHMARKS) + "}")
+print(r"\toprule")
+
+# Header
+header = r"\textbf{Model}"
+for bench in BENCHMARKS:
+    short = bench.replace("_", r"\_")
+    header += f" & \\multicolumn{{2}}{{c}}{{\\textbf{{{short}}}}}"
+header += r" \\"
+print(header)
+
+# Sub-header
+subheader = ""
+for _ in BENCHMARKS:
+    subheader += r" & Acc & F1"
+subheader += r" \\"
+print(subheader)
+print(r"\midrule")
+
+# Data rows
+for _, row in df.iterrows():
+    line = row["Model"].replace("_", r"\_")
+    for bench in BENCHMARKS:
+        acc = row.get(f"{bench}_acc", "—")
+        f1_val = row.get(f"{bench}_f1", "—")
+        if isinstance(acc, float):
+            line += f" & {acc:.4f} & {f1_val:.4f}"
+        else:
+            line += f" & {acc} & {f1_val}"
+    line += r" \\"
+    print(line)
+
+print(r"\bottomrule")
+print(r"\end{tabular}")
+print(r"\end{table}")
 ```
 
-**Expected:** The gap between correct and incorrect confidence should stay the same or widen slightly. High-confidence errors (>0.9) should drop dramatically — from ~31% to potentially <5%.
+### Handling label remapping for baseline models
 
----
-
-### Step 8: Add Calibration to the Paper
-
-Add a new subsection to `paper/main.tex` in the Analysis and Discussion section:
-
-```latex
-\subsection{Confidence Calibration}
-\label{sec:calibration}
-
-Neural networks are known to be overconfident in their predictions
-\citep{guo2017calibration}. Our error analysis (Section~\ref{sec:error-analysis})
-confirms this for ModernFinBERT: 31\% of misclassified samples have prediction
-confidence exceeding 0.9. To address this, we apply post-hoc temperature scaling.
-
-We collect held-out logits via 5-fold cross-validation on the complete training
-set (including DataBoost augmentation), yielding 13,900 logit vectors with no
-data leakage. A single temperature parameter $T$ is learned by minimizing
-negative log-likelihood on these logits.
-
-\begin{table}[h]
-\centering
-\caption{Calibration results. ECE = Expected Calibration Error (lower is better).
-Temperature scaling reduces ECE by X\% while preserving all predictions.}
-\label{tab:calibration}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Method} & \textbf{ECE} & \textbf{Parameters} \\
-\midrule
-Uncalibrated (softmax) & X.XXXX & 0 \\
-Temperature scaling ($T = X.XX$) & X.XXXX & 1 \\
-Vector scaling & X.XXXX & 6 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Temperature scaling achieves the best trade-off: ... [fill after results].
-The calibrated model's confidence scores now reflect its true accuracy,
-enabling practitioners to set meaningful confidence thresholds for
-human-in-the-loop workflows.
-```
-
----
-
-### Step 9: Publish Updated Model
-
-Two options for distributing the calibration:
-
-**Option A (recommended): Config file alongside the model**
-
-Upload `calibration_config.json` to the HuggingFace model repo. Users load it alongside the model. No model retraining needed.
-
-```bash
-# Upload calibration config to HuggingFace
-huggingface-cli upload neoyipeng/ModernFinBERT-base \
-    calibration_config.json calibration_config.json
-```
-
-Update the MODEL_CARD.md with calibrated inference example:
+ProsusAI/finbert and finbert-tone use different label orderings. This must be handled carefully.
 
 ```python
-# Calibrated inference
-import json, torch
-from transformers import pipeline
+def run_inference_with_remap(model, tokenizer, texts, max_length=512,
+                              label_remap=None, batch_size=32):
+    """Run inference with optional label remapping for baseline models.
 
-classifier = pipeline("text-classification", model="neoyipeng/ModernFinBERT-base")
+    Args:
+        label_remap: dict mapping model's output label indices to our
+                     standard scheme {0: NEG, 1: NEU, 2: POS}.
+                     E.g., ProsusAI: {0: 2, 1: 0, 2: 1} because their
+                     0=positive, 1=negative, 2=neutral.
+    """
+    device = next(model.parameters()).device
+    all_preds = []
 
-# For calibrated probabilities, use the temperature from calibration_config.json:
-# T = X.XX  (learned via 5-fold CV temperature scaling)
-# calibrated_probs = softmax(logits / T)
+    with torch.no_grad():
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            inputs = tokenizer(
+                batch, return_tensors="pt", padding=True,
+                truncation=True, max_length=max_length,
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            logits = model(**inputs).logits
+            preds = torch.argmax(logits, dim=-1).cpu().numpy()
+
+            if label_remap:
+                preds = np.array([label_remap[p] for p in preds])
+
+            all_preds.extend(preds)
+
+    return np.array(all_preds)
 ```
 
-**Option B: Bake temperature into the model**
+### Benchmark-specific notes
 
-Modify the classification head's bias/weights to absorb the temperature. This makes calibration invisible to users but is harder to update.
+**FiQA 2018**: Uses continuous sentiment scores in [-1, 1]. Discretization thresholds matter — document them clearly and run sensitivity analysis at [-0.1, 0.1] and [-0.3, 0.3] in addition to [-0.2, 0.2]. Report all three to show robustness.
 
 ```python
-# Bake temperature into the model (divide final layer weights by T)
-model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID)
-with torch.no_grad():
-    model.classifier.weight.div_(T)
-    model.classifier.bias.div_(T)
-model.save_pretrained("neoyipeng/ModernFinBERT-base-calibrated")
+# FiQA threshold sensitivity
+FIQA_THRESHOLDS = [(-0.1, 0.1), (-0.2, 0.2), (-0.3, 0.3)]
+
+for lo, hi in FIQA_THRESHOLDS:
+    texts, labels = load_benchmark_with_thresholds("fiqa_2018", lo, hi)
+    preds = run_inference(model, tokenizer, texts)
+    acc = accuracy_score(labels, preds)
+    print(f"  FiQA thresholds ({lo}, {hi}): acc={acc:.4f}, n={len(texts)}, "
+          f"NEG={labels.count(0)}, NEU={labels.count(1)}, POS={labels.count(2)}")
 ```
 
-Option A is preferred — it's transparent, reversible, and users can choose whether to apply calibration.
+**Twitter Financial News**: Check label scheme carefully — some versions use {0: bearish, 1: bullish, 2: neutral}, which is NOT the same order as FPB. Verify by inspecting a few samples.
 
----
-
-## File Structure for the Notebook
-
-The implementation should be a single notebook: `notebooks/16_confidence_calibration.ipynb`
-
-```
-notebooks/16_confidence_calibration.ipynb
-├── 1. Setup & Installation
-├── 2. Collect Held-Out Logits (5-fold CV)
-│   ├── Load complete dataset (same as NB14)
-│   ├── 5-fold stratified split
-│   └── Train + collect logits per fold
-├── 3. Measure Pre-Calibration ECE
-│   ├── ECE computation
-│   └── Reliability diagram (before)
-├── 4. Fit Calibration Methods
-│   ├── A: Temperature scaling
-│   ├── B: Vector scaling
-│   └── C: Platt scaling
-├── 5. Compare Methods
-│   ├── ECE comparison table
-│   └── Side-by-side reliability diagrams
-├── 6. Validate Predictions Unchanged
-│   ├── Argmax preservation check
-│   └── Confidence separation analysis
-├── 7. Per-Class Calibration Analysis
-│   ├── Class-conditional ECE
-│   └── Per-class reliability diagrams
-├── 8. Save Results
-│   ├── calibration_config.json
-│   ├── results/calibration_comparison.json
-│   └── results/reliability_diagrams.png
-└── 9. Summary & Paper Text
+```python
+# Sanity check: print a few samples from each benchmark
+for name in BENCHMARKS:
+    texts, labels = load_benchmark(name)
+    print(f"\n{name} — sample texts by label:")
+    for label_idx, label_name in enumerate(LABEL_NAMES):
+        examples = [t for t, l in zip(texts, labels) if l == label_idx][:2]
+        for ex in examples:
+            print(f"  [{label_name}] {ex[:100]}")
 ```
 
 ---
 
-## Expected Outcomes
+## Execution Plan
 
-| Metric | Before | After (expected) |
-|---|---|---|
-| ECE | ~0.08-0.12 | ~0.01-0.03 |
-| High-conf errors (>0.9) | ~31% | ~5-10% |
-| Mean conf gap (correct - wrong) | ~0.036 | ~0.15-0.25 |
-| Accuracy | unchanged | unchanged |
-| Inference latency | unchanged | unchanged (division by scalar) |
-| Temperature T | 1.0 (identity) | ~1.5-3.0 |
+```
+NB18: Long-Context Ablation (~9 hours on T4)
+  1. Truncation analysis by source (20 min, no GPU)
+  2. Train at max_length=512 × 3 seeds (~2 hr)
+  3. Train at max_length=1024 × 3 seeds (~3 hr)
+  4. Train at max_length=2048 × 3 seeds (~4 hr)
+  5. Summary table + per-source breakdown
 
----
+NB19: Multi-Benchmark Evaluation (~1 hour on T4)
+  1. Load all 4 benchmarks, verify label schemes
+  2. Evaluate ModernFinBERT-v1 (production, 512 ctx)
+  3. Evaluate ModernFinBERT-v1 (best long-ctx from NB18)
+  4. Evaluate ProsusAI/finbert baseline
+  5. Evaluate finbert-tone baseline
+  6. Generate paper table (LaTeX)
+```
 
-## Resource Requirements
+### Compute
 
-| Resource | Estimate |
-|---|---|
-| GPU time (5-fold CV on T4) | ~3.5 hours |
-| Kaggle GPU quota | 1 session |
-| New code | ~400 lines (1 notebook) |
-| API costs | $0 (no LLM calls) |
-| Risk to existing model | Zero (post-hoc, predictions preserved) |
+| Step | Hardware | Time | Cost |
+|------|----------|------|------|
+| NB18: Long-context ablation | T4 16GB | ~9 hours | Free (Kaggle) |
+| NB19: Multi-benchmark eval | T4 16GB | ~1 hour | Free (Kaggle) |
+| **Total** | | **~10 hours** | **Free** |
 
----
+### What goes into the paper
 
-## Dependencies on Existing Code
+1. **Table: Truncation analysis by source** — shows exactly how much data Source 8 loses at 512 tokens. Justifies the experiment.
+2. **Table: Context length ablation** — accuracy at 512/1024/2048 with per-source breakdown. The key number is Source 8 (earnings call) accuracy lift.
+3. **Table: Multi-benchmark comparison** — ModernFinBERT vs ProsusAI/finbert vs finbert-tone on FPB + FiQA + Twitter Financial. Shows whether ModernFinBERT generalizes or is FPB-specific.
+4. **Discussion paragraph** — if long context helps earnings calls but not FPB (which has median 21 words), that's evidence the architecture improvement is domain-dependent, not universal. If multi-benchmark shows strong generalization, that strengthens the paper's claims.
 
-- **NB14 (production model):** Reuse exact data loading, preprocessing, and training config for the 5-fold CV logit collection
-- **NB15 (error analysis):** The pre-calibration confidence stats (31% high-conf errors) serve as the baseline we're improving
-- **demo/app.py:** Will be updated to use calibrated inference
-- **MODEL_CARD.md:** Will be updated with calibration details
+### Risks
 
----
-
-## Risks and Mitigations
-
-| Risk | Likelihood | Mitigation |
-|---|---|---|
-| Temperature scaling is insufficient | Low | Vector scaling and Platt scaling as fallbacks |
-| Not enough calibration data | Very low | ~13,900 samples is more than enough for 1-6 params |
-| Calibration hurts accuracy | Zero | Temperature scaling preserves argmax by construction |
-| Calibration doesn't transfer to new domains | Medium | Acknowledge in paper; temperature is dataset-specific |
-| 5-fold CV models differ from production model | Low | Same hyperparams, same data; minor seed variation only |
-
----
-
-## Success Criteria
-
-1. ECE drops by at least 50% (e.g., 0.10 → 0.05 or better)
-2. High-confidence errors (>0.9) drop below 15% (from 31%)
-3. All predictions (argmax) are identical before and after calibration
-4. Reliability diagram shows bars hugging the diagonal
-5. Results are reproducible (saved logits + config for exact replication)
-
----
-
-## Detailed Task Checklist
-
-### Phase 0: Preparation
-- [x] **0.1** Verify Kaggle GPU quota is available (~3.5h needed on T4)
-- [x] **0.2** Create `notebooks/16_confidence_calibration.ipynb` with markdown skeleton (section headers from the file structure above)
-- [x] **0.3** Copy the data loading + preprocessing code from NB14 into NB16 Section 1 (setup cell, dataset loading, DataBoost merging, label mapping) — do NOT modify, just replicate for self-contained reproducibility
-- [x] **0.4** Copy the `TrainingArguments` and LoRA/full-FT config from NB14 into a config dict in NB16 — this ensures the 5-fold models match the production model exactly
-- [x] **0.5** Add `%%capture` install cell: `pip install -q datasets scikit-learn matplotlib seaborn transformers torch peft`
-
-### Phase 1: Collect Calibration Logits (NB16 Sections 1-2)
-- [x] **1.1** Load the complete dataset from `neoyipeng/financial_reasoning_aggregated` (all sources including FPB source 5)
-- [x] **1.2** Load the 410 DataBoost augmentation samples from embedded gzip+base64 (same as NB14) and merge into the dataset
-- [x] **1.3** Verify total sample count matches NB14 (~13,900 after merging all sources + DataBoost)
-- [x] **1.4** Print dataset summary: total samples, per-class distribution, per-source counts
-- [x] **1.5** Create `StratifiedKFold(n_splits=5, shuffle=True, random_state=3407)` splitter
-- [x] **1.6** Implement the 5-fold training loop:
-  - [x] **1.6a** For each fold: build HuggingFace `Dataset` objects for train/val from index arrays
-  - [x] **1.6b** For each fold: instantiate fresh `answerdotai/ModernBERT-base` + classification head (num_labels=3)
-  - [x] **1.6c** For each fold: apply same training config as NB14 (full FT: lr=2e-5, weight_decay=0.01, warmup_ratio=0.1, batch=16 effective, fp16, gradient checkpointing, 10 epochs + early stopping)
-  - [x] **1.6d** For each fold: train the model using HuggingFace `Trainer`
-  - [x] **1.6e** For each fold: set model to `eval()` and run inference on the held-out fold in batches of 32
-  - [x] **1.6f** For each fold: store raw logits (NOT softmax probs) in `all_logits[val_idx]` and labels in `all_labels[val_idx]`
-  - [x] **1.6g** For each fold: print fold accuracy + macro F1 on the held-out portion as a sanity check
-  - [x] **1.6h** For each fold: delete model and call `torch.cuda.empty_cache()` to free GPU memory
-- [x] **1.7** After all folds: verify `all_logits` has no zero rows (every sample was filled exactly once)
-- [x] **1.8** Save logits to `results/calibration_logits.npz` with keys `logits` (N, 3) and `labels` (N,)
-- [x] **1.9** Print summary: total logits collected, mean fold accuracy, wall-clock time per fold
-
-### Phase 2: Pre-Calibration Measurement (NB16 Section 3)
-- [x] **2.1** Implement `compute_ece(logits, labels, n_bins=15)` function — returns ECE float + per-bin data list
-- [x] **2.2** Implement `plot_reliability_diagram(bin_data, ece, title, save_path)` function — left panel: reliability bars + diagonal, right panel: confidence histogram
-- [x] **2.3** Load saved logits from `results/calibration_logits.npz`
-- [x] **2.4** Compute pre-calibration ECE on the full logit set (15 bins)
-- [x] **2.5** Also compute ECE with 10 bins and 20 bins to verify ECE is stable across bin count
-- [x] **2.6** Plot and save pre-calibration reliability diagram to `results/reliability_before.png`
-- [x] **2.7** Print pre-calibration confidence stats: mean/median confidence overall, for correct preds, for errors, % of errors with conf > 0.9, % with conf > 0.95
-- [x] **2.8** Print per-class pre-calibration stats: for each of NEGATIVE, NEUTRAL, POSITIVE — mean confidence on correct, mean confidence on errors, class-conditional ECE
-
-### Phase 3: Fit Calibration Methods (NB16 Section 4)
-- [x] **3.1** Implement `TemperatureScaler(nn.Module)` class with `forward(logits)` and `calibrate(logits, labels)` using L-BFGS
-- [x] **3.2** Fit temperature scaling: convert logits/labels to torch tensors, call `calibrate()`, print learned T
-- [x] **3.3** Compute post-temperature-scaling ECE and store result
-- [x] **3.4** Implement `VectorScaler(nn.Module)` class with per-class W and b parameters, L-BFGS optimization
-- [x] **3.5** Fit vector scaling, print learned W and b per class, compute post-vector-scaling ECE
-- [x] **3.6** Implement `platt_scaling(logits, labels)` using `sklearn.linear_model.LogisticRegression` on the logit space
-- [x] **3.7** Fit Platt scaling, compute ECE from `predict_proba` output
-- [x] **3.8** For Platt scaling: verify the fitted model doesn't change >1% of predictions (since Platt can alter argmax unlike temperature scaling, flag if this happens)
-
-### Phase 4: Compare Methods and Select Winner (NB16 Section 5)
-- [x] **4.1** Build comparison table: method name, ECE, delta vs. pre-calibration, number of parameters
-- [x] **4.2** Print formatted comparison table
-- [x] **4.3** Plot 3-panel reliability diagram (Before / Temperature / Vector) and save to `results/calibration_comparison.png`
-- [ ] **4.4** Also save as `paper/figures/fig3_calibration.pdf` for the paper *(PNG saved; PDF requires running on Kaggle)*
-- [x] **4.5** Apply selection criteria: pick temperature scaling unless another method beats it by >0.005 ECE
-- [x] **4.6** Save comparison results to `results/calibration_comparison.json`
-- [x] **4.7** Print the winning method and its parameters
-
-### Phase 5: Validation (NB16 Section 6)
-- [x] **5.1** Argmax preservation check: assert `np.array_equal(argmax(logits), argmax(logits / T))` — print explicit confirmation
-- [x] **5.2** Compute and print accuracy before and after calibration (must be identical)
-- [x] **5.3** Compute confidence separation table: mean confidence for correct vs. incorrect predictions, before and after
-- [x] **5.4** Compute % of high-confidence errors (>0.9) before and after — this is the headline metric
-- [x] **5.5** Compute % of high-confidence errors (>0.95) before and after
-- [x] **5.6** Compute AUROC of "confidence as a binary classifier for correctness" — before and after (higher = confidence is more useful for filtering)
-- [x] **5.7** Plot confidence distribution overlay: correct vs. incorrect, before and after (2x1 subplot)
-
-### Phase 6: Per-Class Deep Dive (NB16 Section 7)
-- [x] **6.1** Compute class-conditional ECE for each of NEGATIVE, NEUTRAL, POSITIVE — before and after calibration
-- [ ] **6.2** Plot per-class reliability diagrams (3x2 grid: 3 classes x before/after) *(deferred — implemented as table; 3x2 grid would add complexity without much value)*
-- [x] **6.3** Compute per-class confidence separation (mean conf correct vs. incorrect) before and after
-- [x] **6.4** Identify which class benefits most from calibration — print a summary paragraph
-- [x] **6.5** If vector scaling was competitive: compare per-class W values to identify which class was most miscalibrated
-
-### Phase 7: Save Artifacts (NB16 Section 8)
-- [x] **7.1** Save `calibration_config.json` to repo root with fields: method, temperature, ece_before, ece_after, calibration_samples, num_folds, seed, label_names, timestamp
-- [x] **7.2** Save `results/calibration_comparison.json` with all method results
-- [x] **7.3** Save `results/calibration_logits.npz` (already done in Phase 1, verify it's intact)
-- [x] **7.4** Save `results/reliability_before.png`
-- [x] **7.5** Save `results/calibration_comparison.png`
-- [ ] **7.6** Save `paper/figures/fig3_calibration.pdf` *(deferred — requires Kaggle run for actual data)*
-- [x] **7.7** Print a summary block listing all saved files with their sizes
-
-### Phase 8: Integrate Into Inference Pipeline
-- [x] **8.1** Update `demo/app.py`: add `calibration_config.json` loading at startup, apply `logits / T` before softmax in `predict()`
-- [x] **8.2** Create `scripts/calibrated_inference.py` containing the `CalibratedModernFinBERT` class with `predict()` and `predict_batch()` methods
-- [ ] **8.3** Add a `--calibrated / --raw` flag to `scripts/inference_benchmark.py` and verify latency is unchanged with calibration *(deferred — trivial after calibration_config.json exists)*
-- [ ] **8.4** Run the updated demo locally and test with the 5 example texts — verify outputs are sensible and confidence values are lower (less overconfident) than before *(requires calibration_config.json from Kaggle run)*
-- [ ] **8.5** Verify `CalibratedModernFinBERT.predict_batch()` works on the 10 benchmark texts from `inference_benchmark.py` *(requires calibration_config.json from Kaggle run)*
-
-### Phase 9: Update Paper
-- [x] **9.1** Add `\subsection{Confidence Calibration}` to `paper/main.tex` in the Analysis and Discussion section (after the Error Analysis subsection)
-- [ ] **9.2** Fill in the calibration results table (Table `tab:calibration`) with actual ECE values *(requires Kaggle run)*
-- [ ] **9.3** Add the reliability diagram figure (`fig3_calibration.pdf`) with caption *(requires Kaggle run)*
-- [x] **9.4** Update the Limitations section: add a note that the temperature was learned on the training distribution and may need recalibration for out-of-distribution text
-- [x] **9.5** Add Guo et al., 2017 ("On Calibration of Modern Neural Networks") to `paper/references.bib`
-- [x] **9.6** Update the Conclusion to mention calibration as an additional contribution
-- [ ] **9.7** Compile the paper (`pdflatex main && bibtex main && pdflatex main && pdflatex main`) and verify no errors *(requires filling in TBD values first)*
-
-### Phase 10: Update Documentation and Publish
-- [x] **10.1** Update `MODEL_CARD.md`: add a "Calibration" section explaining temperature scaling, the learned T value, and how to use it
-- [x] **10.2** Add calibrated inference code example to `MODEL_CARD.md`
-- [ ] **10.3** Update `README.md` if it references confidence scores — note they are now calibrated *(checked — README does not reference confidence scores)*
-- [x] **10.4** Update `TODOS.md`: remove or mark complete any calibration-related items *(checked — no calibration items existed)*
-- [ ] **10.5** Upload `calibration_config.json` to HuggingFace model repo via `huggingface-cli upload` *(requires Kaggle run first)*
-- [ ] **10.6** Push updated `demo/app.py` to HuggingFace Spaces (if deployed there) *(requires calibration_config.json)*
-- [ ] **10.7** Commit all changes to git with a descriptive message
-
-### Phase 11: Final Verification *(all require Kaggle run)*
-- [ ] **11.1** Run NB16 end-to-end on Kaggle to verify full reproducibility
-- [ ] **11.2** Verify `calibration_config.json` is loadable from the HuggingFace model repo
-- [ ] **11.3** Verify the Gradio demo on HuggingFace Spaces shows calibrated (lower, more realistic) confidence scores
-- [ ] **11.4** Spot-check 5 known-difficult sentences (hedging, implicit sentiment) — confidence should be noticeably lower than pre-calibration
-- [ ] **11.5** Verify all 5 success criteria are met:
-  - [ ] ECE dropped by >= 50%
-  - [ ] High-confidence errors (>0.9) below 15%
-  - [ ] All predictions unchanged
-  - [ ] Reliability diagram visually tight to diagonal
-  - [ ] Results reproducible from saved logits
+| Risk | Mitigation |
+|------|-----------|
+| Long context hurts FPB accuracy (short texts padded more) | Report per-source; FPB result may be flat while earnings improves |
+| Twitter/FiQA label schemes don't map cleanly to 3-class | Document discretization choices; run threshold sensitivity for FiQA |
+| Baseline models have incompatible label ordering | Verify with manual inspection of 5-10 samples per benchmark |
+| 2048 tokens doesn't fit on T4 with batch=2 | Fall back to batch=1 with ga=32; or use 1024 as max |

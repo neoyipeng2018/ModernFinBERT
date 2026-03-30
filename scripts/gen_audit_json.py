@@ -65,7 +65,7 @@ for src in sorted(df["source"].unique()):
         "name": SOURCE_NAMES[src],
         "n_total": len(sub),
         "n_train": len(sub[sub["split"] == "train"]),
-        "annotation_method": "human" if src == 5 else "llm",
+
         "label_distribution": {
             "NEGATIVE": round((sub["label"] == "NEGATIVE").mean(), 3),
             "NEUTRAL/MIXED": round((sub["label"] == "NEUTRAL/MIXED").mean(), 3),

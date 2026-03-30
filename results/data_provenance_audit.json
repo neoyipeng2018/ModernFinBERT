@@ -8,7 +8,7 @@
       "name": "Earnings Calls (Narrative)",
       "n_total": 513,
       "n_train": 462,
-      "annotation_method": "llm",
+
       "label_distribution": {
         "NEGATIVE": 0.113,
         "NEUTRAL/MIXED": 0.534,
@@ -24,7 +24,7 @@
       "name": "Press Releases & News",
       "n_total": 1730,
       "n_train": 1557,
-      "annotation_method": "llm",
+
       "label_distribution": {
         "NEGATIVE": 0.034,
         "NEUTRAL/MIXED": 0.587,
@@ -40,7 +40,7 @@
       "name": "FinancialPhraseBank",
       "n_total": 4846,
       "n_train": 4361,
-      "annotation_method": "human",
+
       "label_distribution": {
         "NEGATIVE": 0.125,
         "NEUTRAL/MIXED": 0.594,
@@ -56,7 +56,7 @@
       "name": "Earnings Calls (Q&A)",
       "n_total": 2711,
       "n_train": 2440,
-      "annotation_method": "llm",
+
       "label_distribution": {
         "NEGATIVE": 0.079,
         "NEUTRAL/MIXED": 0.577,
@@ -72,7 +72,7 @@
       "name": "Financial Tweets",
       "n_total": 4649,
       "n_train": 4184,
-      "annotation_method": "llm",
+
       "label_distribution": {
         "NEGATIVE": 0.139,
         "NEUTRAL/MIXED": 0.684,

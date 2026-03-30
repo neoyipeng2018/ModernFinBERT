@@ -6,11 +6,8 @@
 **Effort:** L (human: ~2 weeks / CC: ~4-6 hours excluding data collection)
 **Depends on:** Access to a large financial text corpus (10-50GB). Consider using SEC-EDGAR, financial news APIs, or existing corpora like FinCorpus.
 
-## P2: Multi-Benchmark Evaluation
-**What:** Evaluate ModernFinBERT on additional financial sentiment datasets beyond FPB: SemEval Financial, TweetFin, analyst report sentiment, and SEC filing sentiment.
-**Why:** Single-benchmark evaluation limits generalization claims. Multiple benchmarks would strengthen the paper's conclusions and reveal domain-specific strengths/weaknesses.
-**Effort:** M (human: ~1 week / CC: ~2-3 hours)
-**Depends on:** Dataset access and preprocessing.
+## ~~P2: Multi-Benchmark Evaluation~~ DONE
+Implemented in NB19 (`notebooks/19_multi_benchmark.ipynb`). Evaluates ModernFinBERT, ProsusAI/finbert, and finbert-tone on FPB 50agree, FPB allAgree, Twitter Financial News Sentiment, and FiQA 2018. Includes label remapping verification, FiQA threshold sensitivity, and LaTeX table generation.
 
 ## P3: Statistical Significance for All Comparisons
 **What:** Run DataBoost and held-out experiments with multiple seeds to compute confidence intervals and significance tests for all key claims (not just the CV comparison).
