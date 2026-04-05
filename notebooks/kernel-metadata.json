@@ -1,12 +1,13 @@
 {
-  "id": "neoyipeng2018/modernfinbert-12-full-ft-databoost",
-  "title": "ModernFinBERT-12-Full-FT-DataBoost",
-  "code_file": "12_full_ft_databoost.ipynb",
+  "id": "neoyipeng2018/modernfinbert-v2-train-benchmark",
+  "title": "ModernFinBERT v2 Train Benchmark",
+  "code_file": "01_train_and_benchmark.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": true,
   "enable_gpu": true,
   "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
   "competition_sources": [],
   "dataset_sources": [],
   "kernel_sources": []

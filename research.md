@@ -1,523 +1,610 @@
-# ModernFinBERT: Deep Research Analysis
+# Deep Research: Data Sources for Retraining ModernFinBERT
 
-## Paper Overview
-
-**Title**: ModernFinBERT: A Systematic Study of ModernBERT for Financial Sentiment Analysis
-**Author**: Yipeng Neo
-**Model**: `neoyipeng/ModernFinBERT-base` (HuggingFace)
-**Dataset**: `neoyipeng/financial_reasoning_aggregated` (HuggingFace)
-**Paper**: `paper/main.pdf`
-
-This paper presents nine controlled experiments evaluating ModernBERT-base (149M parameters) for three-class financial sentiment analysis (POSITIVE / NEUTRAL / NEGATIVE) on the FinancialPhraseBank (FPB) benchmark. The central claim is methodological: **evaluation protocol choice inflates reported accuracy by 6.4 percentage points**, and the paper proposes a held-out protocol that gives a more honest picture of model generalization.
-
-The production model is fine-tuned from vanilla `answerdotai/ModernBERT-base` using LoRA -- no domain-specific pre-training -- isolating the contribution of architecture alone.
+> **Goal**: Find all possible in-domain data sources (labeled and unlabeled) to train the best financial sentiment model, given that Financial PhraseBank, FiQA, and Financial Twitter are considered out-of-domain / already known.
 
 ---
 
-## 1. The Protocol Gap (Core Contribution)
+## Table of Contents
 
-The paper's most important finding is the **protocol gap**: the same model achieves 86.88% accuracy under 10-fold cross-validation on FPB but only 80.44% when FPB is excluded from training entirely. That 6.4pp difference is the gap between "how well the model learns FPB's patterns" and "how well the model generalizes to FPB from other financial text."
-
-Against published in-domain SOTA (89-94% accuracy), the gap widens to 9-14pp. This means most published FPB results are not comparable because they train on FPB data and evaluate on FPB data, conflating memorization with generalization.
-
-**Why this matters**: The held-out protocol (train on aggregated financial corpus excluding FPB, evaluate on full FPB) creates a genuine transfer learning test. The model must learn "financial sentiment" from earnings calls, press releases, tweets, and other sources, then transfer that understanding to FPB's press-release style sentences. This is closer to real-world deployment where the model encounters unseen text.
-
-**Key numbers**:
-| Protocol | FPB 50agree Acc | FPB 50agree F1 |
-|---|---|---|
-| 10-fold CV (in-domain) | 86.88% +/- 0.96% | 85.40% +/- 1.39% |
-| Held-out (FPB excluded from training) | 80.44% | 77.05% |
-| Held-out + DataBoost | 82.56% | 80.52% |
-| FPB allAgree (held-out + DataBoost) | 95.14% | 94.17% |
-
-The allAgree subset (unanimous annotator agreement) reaches 95.14% -- showing that the gap between 80% and 93% on FPB largely reflects human annotator disagreement, not model failure.
+1. [Executive Summary](#1-executive-summary)
+2. [Current State: What ModernFinBERT Uses](#2-current-state)
+3. [Tier 1: High-Impact Labeled Datasets](#3-tier-1-labeled)
+4. [Tier 2: Moderate-Impact Labeled Datasets](#4-tier-2-labeled)
+5. [Tier 3: Niche / Specialized Labeled Datasets](#5-tier-3-labeled)
+6. [Unlabeled Corpora for Domain-Adaptive Pretraining](#6-unlabeled-corpora)
+7. [Market-Reaction Labeled Datasets (Distant Supervision)](#7-market-reaction)
+8. [What the Best Financial LMs Used for Training](#8-what-top-models-used)
+9. [State-of-the-Art Training Methods](#9-sota-methods)
+10. [Recommended Training Pipeline](#10-recommended-pipeline)
+11. [Complete Dataset Reference Table](#11-reference-table)
 
 ---
 
-## 2. Architecture: ModernBERT vs BERT
+## 1. Executive Summary <a id="1-executive-summary"></a>
 
-ModernBERT-base (149M params) incorporates three architectural modernizations over BERT-base (110M params):
+The research uncovered **40+ labeled datasets** and **15+ unlabeled corpora** beyond the three out-of-domain benchmarks (FPB, FiQA, Twitter). The single highest-impact finding is:
 
-1. **Rotary Positional Embeddings (RoPE)**: Replaces absolute positional embeddings. Encodes relative position through rotation matrices applied to query/key vectors. Enables extrapolation to longer sequences (up to 8192 tokens) without retraining.
+**The labeled training pool can grow from ~14K samples to ~250K+ clean examples** by combining:
+- NOSIBLE Financial Sentiment (100K, multi-LLM consensus labels, ODC-By license)
+- FinGPT Sentiment aggregation (76K instruction-formatted, MIT)
+- TimKoornstra aggregated tweets (38K, MIT)
+- JanosAudran SEC reports (20.5M sentence-level, market-reaction labels, Apache 2.0)
+- SEntFiN entity-aware headlines (10.7K)
+- StockEmotions (10K, 12 emotion classes)
+- Gold Commodity Headlines (11.4K)
+- FinEntity (979 entity-level)
+- FOMC Hawkish-Dovish (496)
 
-2. **Flash Attention 2**: Hardware-aware attention implementation that fuses the attention computation into a single GPU kernel, reducing memory from O(n^2) to O(n) and significantly improving throughput.
+**For domain-adaptive pretraining**, the open-source ceiling is:
+- PleIAs/SEC: 7.25 billion words of 10-K filings (1993-2024)
+- EDGAR-CORPUS: 220K filings, billions of tokens (Apache 2.0)
+- Financial-News-Multisource: 57M rows across 24 news sources
+- Earnings call transcripts: 33K+ transcripts across 685 companies
 
-3. **GeGLU Activations**: Replaces GELU with a gated variant (GeGLU) in the feed-forward network. The gating mechanism `GeGLU(x) = GELU(xW1) * xW2` provides additional expressiveness.
-
-4. **Unpadding**: Removes padding tokens from the computation graph entirely, processing only real tokens. Particularly beneficial for variable-length financial text.
-
-5. **Fused QKV Projection**: Q, K, V projections are fused into a single `Wqkv` matrix. This is computationally efficient but has implications for LoRA (discussed below).
-
-### Empirical Results
-
-**Held-out evaluation**: ModernBERT + LoRA achieves 80.93% accuracy vs BERT-base + LoRA at 73.09% -- a +7.84pp advantage. This is the clearest signal that the architectural modernizations matter.
-
-**Head-to-head 10-fold CV** (Table 7): ModernBERT wins 7 of 10 folds with a mean advantage of +1.09pp (85.27% vs 86.36%). Paired t-test: t=1.88, p=0.093. The smaller gap in-domain suggests ModernBERT's advantage is disproportionately in *transfer* -- its representations are more robust to distribution shift.
-
-**On allAgree**: ModernBERT + LoRA reaches 93.29% vs BERT's 83.66% -- a +9.63pp gap on the cleanest FPB subset. This suggests BERT struggles more with clear-cut sentiment, while ModernBERT handles both easy and ambiguous cases better.
-
----
-
-## 3. Training Configuration
-
-### LoRA Setup
-- **Rank**: r=16, alpha=32 (effective scaling = alpha/r = 2.0)
-- **Target modules**: `Wqkv`, `out_proj`, `Wi`, `Wo` (ModernBERT-specific names)
-- **Dropout**: 0.05
-- **Trainable parameters**: 1.1M out of 149M (~0.7%)
-
-A critical subtlety: ModernBERT's fused QKV projection means LoRA rank 16 is shared across Q, K, and V. The effective rank per component is ~5.3. This creates an implicit bottleneck that may act as additional regularization (see Section 6).
-
-### Training Hyperparameters (LoRA)
-- Optimizer: AdamW
-- Learning rate: 2e-4 with cosine schedule
-- Warmup: 10 steps
-- Effective batch size: 32 (per-device 8 x gradient accumulation 4)
-- Precision: FP16
-- Epochs: 10 with early stopping on validation loss
-- Gradient checkpointing: enabled
-
-### Training Hyperparameters (Full Fine-Tuning)
-- Learning rate: 2e-5 (10x lower than LoRA)
-- Weight decay: 0.01
-- Warmup ratio: 0.1
-- Effective batch size: 16 (per-device 8 x gradient accumulation 2)
-- Gradient checkpointing: enabled
-
-### Training Data
-Source: `neoyipeng/financial_reasoning_aggregated`, filtered to sentiment task, FPB (source 5) excluded.
-
-| Source | Domain | N_train | NEG% | NEU% | POS% | Med. Words |
-|---|---|---|---|---|---|---|
-| 3 | Earnings calls (narrative) | 462 | 11.3% | 53.4% | 35.3% | 32 |
-| 4 | Press releases / news | 1,557 | 3.4% | 58.7% | 37.9% | 60 |
-| 8 | Earnings calls (Q&A) | 2,440 | 7.9% | 57.7% | 34.4% | 161 |
-| 9 | Financial tweets | 4,184 | 13.9% | 68.4% | 17.6% | 15 |
-| **Total** | | **8,643** | **10.2%** | **62.7%** | **27.1%** | --- |
-
-Three critical data characteristics:
-1. **Class imbalance**: Training NEGATIVE rate is 10.2% vs FPB's 12.5%. The model sees fewer negative examples than what FPB expects.
-2. **Sub-domain bias**: Source 4 is 68% Canadian mining/resource press releases (mentions of TSX, mining, resource extraction). This creates a narrow sub-domain that may not transfer broadly.
-3. **Length mismatch**: Source 8 (earnings Q&A) has median 161 words (mean 189, max 2,596). With max_length=512, a substantial fraction is silently truncated -- the model trains on incomplete texts.
-
-FPB uses crowd-sourced human annotation (>=50% agreement threshold). The annotation methodology for other sources in the aggregated dataset is documented in their respective original papers.
+**Key methodological insight**: The optimal pipeline is DAPT (continued MLM on financial corpus) -> TAPT (MLM on task-specific unlabeled data) -> supervised fine-tuning with contrastive loss. This consistently produces the best results across all recent papers.
 
 ---
 
-## 4. DataBoost: Targeted Augmentation via Verbalized Sampling
+## 2. Current State: What ModernFinBERT Uses <a id="2-current-state"></a>
 
-DataBoost is a targeted data augmentation strategy that combines error mining with Verbalized Sampling (VS), a technique from Zhang et al. (2025).
+| Source | Domain | Samples | Median Length |
+|--------|--------|---------|---------------|
+| Earnings Calls (Narrative) | Corporate transcripts | 513 | 32 words |
+| Press Releases & News | Financial news | 1,730 | 60 words |
+| Financial PhraseBank | Press releases | 4,846 | 21 words |
+| Earnings Calls (Q&A) | Analyst Q&A | 2,711 | 161 words |
+| Financial Tweets | Social media | 4,649 | 15 words |
+| **Total** | | **14,449** | |
 
-### The Verbalized Sampling Technique
+**Current best results**: 86.88% accuracy (10-fold CV on FPB), 80.44% (held-out). The model uses ModernBERT-base (149M params) with LoRA fine-tuning.
 
-Standard LLM paraphrasing suffers from **mode collapse** -- the model generates near-identical outputs because RLHF training sharpens outputs toward the mode of the distribution. VS counteracts this by explicitly asking the model to:
-
-1. Generate k candidate texts (default k=5)
-2. Assign probability estimates to each candidate (must sum to ~1.0)
-3. Order from most common (highest probability) to most unusual (lowest)
-
-This forces the model to think about the full distribution of possible texts, not just the most likely one. VS achieves 1.6-2.1x more diverse outputs than direct prompting.
-
-### VS-CoT (Chain of Thought) Variant
-
-The paper uses the VS-CoT variant, which adds a reasoning phase before generation:
-
-**Phase 1 (Analysis)**: Why did the classifier confuse this sample? What distinguishing linguistic cues separate the true label from the predicted label? Plan sub-domain coverage across 11 financial text types (earnings calls, analyst notes, news, SEC filings, press releases, social media, credit ratings, M&A, central bank communications, trading desk commentary, etc.).
-
-**Phase 2 (Generation)**: Produce k diverse candidates spanning different sub-domains, each with a probability estimate. Texts are 10-40 words (matching FPB style).
-
-**Phase 3 (Output)**: text, label, probability, source_variant, confusion_type.
-
-### DataBoost Protocol
-
-1. Train baseline model on aggregated data (FPB excluded)
-2. Run inference on validation set -- identify 82 misclassified samples (17.1% error rate on 480 validation samples)
-3. For each misclassified sample, generate 3 diverse paraphrases using VS-CoT via Claude, preserving the gold label but varying financial sub-domain, register, and sentence structure
-4. This yields 246 augmented samples
-5. Retrain with augmented data
-
-### Results
-
-| Model | Accuracy | Macro F1 |
-|---|---|---|
-| Baseline | 77.29% | 66.60% |
-| DataBoosted | 80.21% | 74.43% |
-| **Delta** | **+2.92pp** | **+7.84pp** |
-
-The disproportionate F1 gain (+7.84pp) vs accuracy gain (+2.92pp) confirms that augmentation disproportionately helps **minority classes** (NEGATIVE and POSITIVE). This makes sense: the misclassified samples are biased toward the tails, and VS-CoT generates diverse examples in exactly those underrepresented regions.
-
-On FPB evaluation:
-
-| Metric | Baseline | DataBoosted | Delta |
-|---|---|---|---|
-| FPB 50agree Acc | 80.91% | 82.56% | +1.65pp |
-| FPB 50agree F1 | 78.10% | 80.52% | +2.42pp |
-| FPB allAgree Acc | 93.24% | 95.14% | +1.90pp |
-| FPB allAgree F1 | 91.92% | 94.17% | +2.25pp |
-
-Only 246 synthetic samples move the needle by nearly 2pp on 4,846 FPB sentences -- high augmentation efficiency.
-
-### Augmented Data Structure
-
-The VS-augmented data (`data/vs_augmented_errors.csv`) contains:
-- `text`: Generated financial sentence (10-40 words)
-- `label`: Numeric label (0/1/2)
-- `label_name`: NEGATIVE/NEUTRAL/POSITIVE
-- `probability`: VS probability estimate (batches of 5 sum to ~1.0)
-- `source_variant`: vs-cot
-- `confusion_type`: e.g., "POSITIVE->NEUTRAL" (what the model got wrong)
-
-Examples target specific confusion patterns like POSITIVE sentences containing cautious/factual language that a classifier might read as NEUTRAL. Each batch of 5 spans different financial sub-domains (equity research, trading commentary, press releases, analyst notes, SEC filings).
+**The gap**: Current training data is small (14K) and domain-narrow (68% of news = Canadian mining companies). There's no domain-adaptive pretraining phase. The model goes straight from general ModernBERT to supervised fine-tuning.
 
 ---
 
-## 5. Fine-Tuned Model vs Claude Opus 4 (LLM Comparison)
+## 3. Tier 1: High-Impact Labeled Datasets <a id="3-tier-1-labeled"></a>
 
-### Setup
+These are the datasets most likely to produce the largest performance gains.
 
-Claude Opus 4.6 was equipped with a purpose-built **financial sentiment engine skill** -- a structured prompt that:
-- Uses direct classification (no CoT) for short texts, following Vamvourellis & Mehta (2025) finding that reasoning causes "overthinking" on financial sentiment
-- Defines labels from an investor lens (POSITIVE = likely increases stock price)
-- Adapts decision framework by text length (short: direct, medium: label-first, long: analogical reasoning)
-- Includes calibrated probability guidelines (never 1.00 or 0.00)
+### 3.1 NOSIBLE Financial Sentiment (100K)
 
-Evaluation was blind: four independent Claude agents classified chunks of 723 samples (243 FPB + 478 non-FPB + 2 external) without seeing ground truth.
+- **HuggingFace**: `NOSIBLE/financial-sentiment`
+- **Size**: 100,000 examples (train split)
+- **Labels**: 3-class (positive, negative, neutral)
+- **Domain**: Financial news headlines
+- **Labeling**: Multi-LLM consensus pipeline (8 LLM models) with active learning refinement and GPT-5.1 oracle validation. Cleaned and deduplicated.
+- **License**: ODC-By (Open Data Commons Attribution) -- commercial use OK
+- **Why it matters**: 20x larger than FPB with comparable label quality. This is the single biggest available labeled dataset for financial sentiment. Multi-LLM consensus reduces individual model bias. Includes source URL and domain metadata.
+- **Risk**: LLM-generated labels may have systematic biases different from human annotators. Need to validate against FPB human labels.
 
-### Results
+### 3.2 FinGPT Sentiment Training Set (76K)
 
-| Model | Accuracy | Macro F1 | Cost/sample | Latency/sample |
-|---|---|---|---|---|
-| ModernFinBERT (149M) | 83.13% | 79.57% | ~$0.00001 | ~2ms |
-| Claude Opus 4.6 + skill | 72.75% | 70.33% | ~$0.008 | ~1-2s |
+- **HuggingFace**: `flwrlabs/fingpt-sentiment-train`
+- **Size**: 76,772 examples
+- **Labels**: Two schemes -- 3-level (positive/neutral/negative) AND 7-level (strong negative through strong positive)
+- **Domain**: Mixed financial news + tweets
+- **Format**: Instruction-tuned (instruction/input/output)
+- **License**: MIT
+- **Why it matters**: Large, diverse, and includes fine-grained 7-level labels that can be collapsed to 3-class. The instruction format can be stripped to get raw text + label pairs. Aggregates multiple source datasets.
 
-**Gap**: +10.38pp accuracy, +9.24pp F1 in favor of the fine-tuned model. ModernFinBERT is 800x cheaper and 500-1000x faster.
+### 3.3 TimKoornstra Aggregated Financial Tweets (38K)
 
-### Per-Domain Breakdown
+- **HuggingFace**: `TimKoornstra/financial-tweets-sentiment`
+- **Size**: 38,091 tweets (Neutral=12,181, Bullish=17,368, Bearish=8,542)
+- **Labels**: 3-class (Neutral/Bullish/Bearish)
+- **Domain**: Financial social media
+- **Source**: Aggregated from 9 sources: FiQA, IEEE DataPort, Kaggle, GitHub, Surge AI crypto/stock, HuggingFace. Deduplicated, sentiment-mapped.
+- **License**: MIT
+- **Why it matters**: The most comprehensive aggregation of financial tweet sentiment data. Multi-source reduces single-source bias. Clean deduplication.
 
-| Text Type | ModernFinBERT | Claude | Gap |
-|---|---|---|---|
-| Earnings Calls (n=136) | 69.12% | 47.79% | +21.32pp |
-| Mining/TSX-V (n=35) | 88.57% | 82.86% | +5.71pp |
-| Press Release/Other (n=125) | 88.00% | 77.60% | +10.40pp |
-| Social Media (n=182) | 87.36% | 77.47% | +9.89pp |
+### 3.4 JanosAudran SEC Financial Reports (20.5M sentences)
 
-The largest gap is on earnings calls (+21.32pp) -- the domain where both models struggle most. ModernFinBERT's advantage is narrower on clean domains (mining press releases) and largest where the text is most complex and ambiguous.
+- **HuggingFace**: `JanosAudran/financial-reports-sec`
+- **Size**: 20.5M sentences (large_lite config); 240K (small configs)
+- **Labels**: Binary (positive/negative) derived from market reaction at 1-day, 5-day, and 30-day windows
+- **Domain**: 10-K annual reports, segmented into 20 sections
+- **Metadata**: CIK, tickers, SIC codes, filing dates, actual return percentages
+- **License**: Apache 2.0
+- **Why it matters**: Massive scale with market-derived labels. Can be used for distant supervision pretraining even if labels are noisy. The 30-day window labels may be more reliable than 1-day (less noise). Includes rich metadata for filtering.
+- **Risk**: Market-reaction labels are noisy -- stock moves reflect many factors beyond filing sentiment. Best used as auxiliary training signal, not primary labels.
 
-### Claude's Error Patterns
+### 3.5 SEntFiN 1.0 (10.7K entity-aware)
 
-From the blind benchmark results:
-- **POSITIVE/NEUTRAL boundary confusion** dominates: 131 of 197 Claude errors
-- NEGATIVE recall is highest (0.819) but over-triggers on neutrals
-- NEUTRAL/MIXED is the most reliable class for Claude (F1=0.779)
-- Rare polarity flips (POSITIVE->NEGATIVE: 7, NEGATIVE->POSITIVE: 5)
+- **Paper**: Sinha et al. (2022) -- "SEntFiN 1.0: Entity-Aware Sentiment Analysis for Financial News"
+- **Size**: 10,753 news headlines; 2,847 headlines with multiple entities having conflicting sentiments; 5,000+ entity phrases
+- **Labels**: Entity-level sentiment (positive, negative, neutral)
+- **Domain**: Financial news headlines
+- **Why it matters**: The only large-scale dataset capturing entity-level conflicting sentiment in financial text. Critical for real-world deployment where "Company A gained market share from struggling Company B" needs different labels per entity. Directly addresses a known weakness of sentence-level models.
+- **Availability**: Via paper authors / GitHub
 
-The non-blind evaluation (where Claude could see labels) scored 95.7% accuracy -- confirming the blind evaluation was fair and that the gap is about classification ability, not prompt issues.
+### 3.6 FinanceMTEB FinSent (10K)
 
----
-
-## 6. LoRA as Implicit Regularizer (2x2 Experiment)
-
-The paper runs a 2x2 factorial experiment: {LoRA, Full Fine-Tuning} x {Baseline, DataBoosted}.
-
-| Fine-tuning | Data | Params | FPB 50agree Acc | FPB 50agree F1 |
-|---|---|---|---|---|
-| LoRA r=16 | Baseline | 1.1M | 80.91% | 78.10% |
-| LoRA r=16 | DataBoosted | 1.1M | **82.56%** | **80.52%** |
-| Full FT | Baseline | 149M | 77.22% | 69.37% |
-| Full FT | DataBoosted | 149M | 81.37% | 79.77% |
-
-Three findings:
-
-1. **LoRA outperforms full FT**: +3.69pp on baseline, +1.19pp with DataBoost. LoRA's low-rank constraint prevents overfitting on the small (8,643 sample) training set -- it acts as an implicit regularizer.
-
-2. **DataBoost is more impactful under full FT**: Full FT gains +4.15pp accuracy and +10.4pp F1 from DataBoost, vs +1.65pp accuracy under LoRA. Full FT has more capacity to overfit, so the augmented data provides a proportionally larger regularization benefit.
-
-3. **LoRA + DataBoost remains the best configuration** at 82.56% accuracy -- matching the best of both worlds (regularization from LoRA + diversity from DataBoost).
-
-The fused QKV projection in ModernBERT adds another dimension: LoRA r=16 shared across Q, K, V gives ~5.3 effective rank per component -- a tighter bottleneck than LoRA on standard BERT where each component gets its own rank-16 adapter.
+- **HuggingFace**: `FinanceMTEB/FinSent`
+- **Size**: 9,996 examples (train=9,000, test=1,000)
+- **Labels**: 3-class (positive, negative, neutral)
+- **Domain**: Analyst report style text
+- **Why it matters**: Part of the FinanceMTEB benchmark suite. Analyst report domain is underrepresented in current training data. Clean benchmark-quality labels.
 
 ---
 
-## 7. Self-Training: A Negative Result
+## 4. Tier 2: Moderate-Impact Labeled Datasets <a id="4-tier-2-labeled"></a>
 
-Self-training with pseudo-labels was attempted and failed. The protocol:
+### 4.1 StockEmotions (10K, 12 emotions)
 
-1. Train teacher model on DataBoosted set
-2. Source ~30k unlabeled financial tweets (filtered 5-50 words, deduplicated)
-3. Per-class top-k confidence thresholds (15%, 25%, 40% across rounds) to prevent NEUTRAL domination
-4. Train fresh student on labeled + pseudo-labeled data
-5. Repeat 3 rounds
+- **Paper**: AAAI 2023
+- **Size**: 10,000 StockTwits comments
+- **Labels**: 12 fine-grained emotion classes + bullish/bearish sentiment
+- **Domain**: StockTwits investor commentary
+- **Why it matters**: Only dataset capturing investor emotions beyond binary/ternary sentiment. The 12 emotions (fear, greed, excitement, etc.) can be collapsed to 3-class but also enable multi-task training. Captures retail investor psychology.
 
-**Result**: Round 1 added 3,217 pseudo-labeled samples but accuracy dropped from 82.56% to 80.54%. Validation accuracy decreased from 83.54% to 82.92%, triggering early stopping.
+### 4.2 FinGPT Sentiment Classification (47.5K)
 
-**Why it failed**:
-1. **Domain mismatch**: Unlabeled data was Twitter financial text (informal, short, slang-heavy) while FPB evaluation is formal press-release sentences. The training data already contained 48% tweets + earnings calls, and adding more tweets pushed the distribution further from FPB's register.
-2. **Overconfident teacher**: Mean and minimum confidence scores were ~1.0, meaning the model was nearly deterministic in its predictions. The pseudo-labels were essentially hard labels with no uncertainty signal, reinforcing existing decision boundaries rather than expanding coverage.
+- **HuggingFace**: `FinGPT/fingpt-sentiment-cls`
+- **Size**: 47,557 examples
+- **Labels**: Binary (positive/negative) with 20 instruction variations
+- **Domain**: Mixed news + tweets
+- **Why it matters**: Large binary dataset. Can supplement ternary training as auxiliary task or for pretraining the classification head.
 
-This is a well-documented negative result: more data doesn't help when it's from the wrong distribution, and overconfident pseudo-labels amplify rather than correct errors.
+### 4.3 Gold Commodity Headlines (11.4K)
 
----
+- **Paper**: Commodity market NLP literature
+- **Size**: 11,412 annotated commodity market headlines
+- **Labels**: Sentiment labels
+- **Domain**: Commodity markets (gold, oil, metals)
+- **Why it matters**: Unique commodity market domain that's underrepresented in financial NLP. Commodity-specific language ("supply glut", "demand surge") differs from equity-focused text.
 
-## 8. Multi-Seed Robustness
+### 4.4 FOMC Hawkish-Dovish (496)
 
-Five seeds (3407, 42, 123, 456, 789) were evaluated on the held-out protocol. All standard deviations are below 1%:
+- **HuggingFace**: `TheFinAI/finben-fomc`
+- **Size**: 496 examples (test set)
+- **Labels**: 3-class (Hawkish, Dovish, Neutral)
+- **Domain**: FOMC statements and minutes (1996-2022)
+- **Paper**: "Trillion Dollar Words" (Shah et al., ACL 2023)
+- **Why it matters**: Central bank communication domain. Monetary policy sentiment is distinct from corporate sentiment. Small but unique domain coverage.
+- **Note**: The larger FOMC dataset (from the full paper) covers 1996-2022 and may be available from the authors.
 
-| Metric | Mean +/- Std |
-|---|---|
-| FPB 50agree Accuracy | 80.44% +/- 0.89% |
-| FPB 50agree F1 | 77.05% +/- 0.98% |
-| FPB allAgree Accuracy | 92.98% +/- 0.25% |
-| Aggregated Test Accuracy | 77.71% +/- 0.53% |
+### 4.5 FinEntity (979, entity-level)
 
-The model is stable: seed choice does not meaningfully affect results. The LoRA + cosine schedule configuration provides robust convergence across random initializations.
+- **HuggingFace**: `yixuantt/FinEntity`
+- **Size**: 979 examples
+- **Labels**: 3-class per entity span (Positive/Neutral/Negative), multiple entities per sentence
+- **Domain**: Financial text, EMNLP 2023
+- **License**: ODC-BY
+- **Why it matters**: Character-offset entity annotations with per-entity sentiment. Complementary to SEntFiN for entity-level modeling.
 
----
+### 4.6 FinMarBa (61K, market-reaction labels)
 
-## 9. Data Provenance and Contamination Audit
+- **Paper**: arXiv 2507.22932 (2025)
+- **Size**: 61,252 annotated headlines (Jan 2010 - Jan 2024), from Bloomberg Market Wraps
+- **Labels**: Market-reaction-based sentiment (derived from actual stock/index movements)
+- **Domain**: Bloomberg Market Wrap headlines
+- **Why it matters**: Novel approach using objective market movements rather than human annotation. Eliminates annotator bias. 14 years of temporal coverage. May be available from authors.
+- **Risk**: Same caveat as all market-reaction labels -- stock movements ≠ text sentiment. But Bloomberg Market Wraps are specifically *about* market movements, so alignment is higher than for generic news.
 
-### Contamination Check
+### 4.7 Kaggle Finance News Sentiments (32K)
 
-Three levels of deduplication were tested between the 9,123 training samples and 4,846 FPB evaluation samples:
-- **Exact string match**: 0 matches
-- **Fuzzy match** (>0.90 similarity): 0 matches
-- **Semantic similarity** (cosine >0.95): 0 matches
+- **Kaggle**: `antobenedetti/finance-news-sentiments`
+- **Size**: 32,000+ labeled news items
+- **Labels**: Sentiment labels
+- **Domain**: Financial news
+- **Why it matters**: Reasonably large, directly accessible. Quality may vary -- needs validation.
 
-The training set is **clean** -- no data leakage from FPB into the held-out training corpus.
+### 4.8 Reddit WallStreetBets Sentiment
 
-### Sub-Domain Bias
+- **HuggingFace**: `SocialGrep/reddit-wallstreetbets-aug-2021`
+- **Size**: Full month of r/WallStreetBets (Aug 2021 -- peak meme stock era)
+- **Labels**: Sentiment from in-house pipeline (on comments)
+- **Domain**: Retail investor social media
+- **Why it matters**: Captures meme stock / retail investor language. Highly informal register that stress-tests models.
+- **Risk**: Pipeline-generated labels, quality uncertain. Peak meme stock era may not be representative.
 
-Source 4 (press releases, 1,557 samples) is **68% Canadian mining and resource extraction** content. These texts frequently mention TSX, TSX-V, mining companies, and resource extraction terminology. This creates a narrow sub-domain bias: the model learns "financial press release" sentiment disproportionately from one industry and one country.
+### 4.9 TimKoornstra Synthetic Financial Tweets (1.4M)
 
-Despite this, ModernFinBERT achieves 88.57% accuracy on mining/TSX-V test samples and 88.00% on general press releases -- suggesting the bias hasn't dramatically hurt generalization to non-mining press releases.
-
-### Annotation Quality
-
-FPB uses crowd-sourced human annotation with a >=50% agreement threshold. The annotation methodology for other training sources is documented in their respective original datasets.
-
----
-
-## 10. Confidence Calibration
-
-Post-hoc temperature scaling was applied to make model confidence scores reflect actual accuracy.
-
-### Method
-
-Temperature T is learned by minimizing negative log-likelihood on calibration data:
-
-T* = argmin_T [ -(1/N) * sum_i log( exp(z_{i,y_i} / T) / sum_c exp(z_{i,c} / T) ) ]
-
-Temperature scaling divides all logits by T before softmax. T > 1 softens probabilities (reduces overconfidence), T < 1 sharpens them. Critically, temperature scaling preserves all predictions (argmax is unchanged).
-
-### Results
-
-Four calibration methods were compared:
-
-| Method | ECE | Parameters |
-|---|---|---|
-| Pre-calibration (softmax) | 0.000242 | 0 |
-| Temperature scaling (T=1.0003) | 0.000242 | 1 |
-| Vector scaling | 0.000242 | 6 |
-| Platt scaling | 0.000166 | 12 |
-
-### Methodological Issue
-
-The calibration experiment was run on the model's own training data (in-sample), not held-out data. The 5-fold CV approach described in the paper was skipped (commented out in the notebook). As a result:
-- Accuracy on calibration data: 99.97%
-- ECE: 0.0002 (near-perfect)
-- Learned temperature: T=1.0003 (essentially no change)
-
-These numbers are not informative for real-world calibration. The model appears perfectly calibrated because it's being evaluated on data it memorized. A proper calibration study would use the planned 5-fold CV or a held-out split.
-
-The calibration config (`T=1.0003`) is released alongside the model but should be treated as a placeholder pending proper held-out calibration.
+- **HuggingFace**: `TimKoornstra/synthetic-financial-tweets-sentiment`
+- **Size**: ~1.4M synthetic tweets
+- **Labels**: 3-class (Neutral/Bullish/Bearish)
+- **Domain**: Synthetic financial social media
+- **Generator**: Nous-Hermes-2-Mixtral-8x7B-DPO
+- **License**: MIT
+- **Why it matters**: Massive scale. Synthetic data can help with rare class examples and distribution coverage. MIT license.
+- **Risk**: Synthetic text may lack the noise, typos, and idiosyncratic patterns of real tweets. Could introduce model-specific artifacts. Best used as supplementary data, not primary.
 
 ---
 
-## 11. Inference Performance
+## 5. Tier 3: Niche / Specialized Labeled Datasets <a id="5-tier-3-labeled"></a>
 
-Benchmarked on `neoyipeng/ModernFinBERT-base` with 100 iterations and 10 warmup:
+### 5.1 SemEval-2017 Task 5
 
-| Device | Batch Size | p50 Latency | Throughput |
-|---|---|---|---|
-| CPU | 1 | 26.2ms | 27.4 samples/sec |
-| CPU | 32 | 14.0ms/sample | 71.6 samples/sec |
-| MPS (Apple Silicon) | 1 | 43.8ms | 22.5 samples/sec |
-| MPS (Apple Silicon) | 32 | 9.4ms/sample | 106.7 samples/sec |
+- **Size**: Train: 1,142 headlines + 1,694 microblog posts; Test: 491 headlines + 794 posts
+- **Labels**: Continuous sentiment score per entity target
+- **Domain**: Financial microblogs and news headlines
+- **Why it matters**: Standard academic benchmark with continuous scores and entity targets.
 
-Peak throughput: **107 samples/sec on Apple Silicon at batch 32**. Single-sample latency is ~26ms on CPU and ~44ms on MPS.
+### 5.2 CryptoBERT / Crypto Sentiment Datasets
 
-MPS is slower than CPU for single samples (GPU kernel launch overhead) but scales much better with batching. The optimal batch size is 32 on both devices -- throughput plateaus beyond that.
+- Various crypto-specific sentiment datasets on HuggingFace and Kaggle
+- **Domain**: Cryptocurrency markets
+- **Why it matters**: Crypto language overlaps with but differs from traditional finance. Adds register diversity.
+- **Risk**: Crypto vocabulary ("HODL", "mooning", "rug pull") may not transfer well to corporate finance.
 
-For comparison, Claude Opus 4.6 processes at ~0.5-1.0 samples/sec. ModernFinBERT is 100-200x faster at batch inference.
+### 5.3 Auditor Sentiment
 
----
+- **HuggingFace**: `FinanceInc/auditor_sentiment`
+- **Size**: 4,846 (train=3,880, test=969)
+- **Labels**: 3-class
+- **Domain**: Auditing
+- **License**: Proprietary (DO NOT SHARE) -- limits usage
+- **Note**: Derived from FPB with >75% agreement filter. Not independent data.
 
-## 12. Error Analysis (NB15 -- Designed but Unexecuted)
+### 5.4 Fin-Fact (3.1K financial claims)
 
-NB15 was designed to systematically categorize misclassifications by:
+- **HuggingFace**: `amanrangapur/Fin-Fact`
+- **Size**: 3,121 claims
+- **Labels**: Fact-check labels, visualization bias labels, justifications
+- **Domain**: Financial fact-checking
+- **Why it matters**: Useful for multi-task training (fact verification as auxiliary task). Not directly sentiment but teaches financial reasoning.
 
-1. **Confusion type**: Which label pairs are most confused (e.g., NEG->NEU, POS->NEU)
-2. **Text length**: Short (<15 words), medium (15-30), long (>30) error rates
-3. **Linguistic patterns**: Regex-based detection of:
-   - Hedging language: "may," "could," "might," "possibly," "likely"
-   - Conditional statements: "if," "although," "however," "despite," "while"
-   - Comparative language: "more than," "less than," "higher," "lower"
-   - Implicit sentiment: absence of explicit sentiment keywords
-4. **Financial domain**: Mining/resources, earnings, market/trading, general business
-5. **Confidence analysis**: Do high-confidence errors cluster in specific patterns?
+### 5.5 FinQA (8.2K financial QA pairs)
 
-The paper's discussion section mentions these categories but marks the concrete results as "TBD." The error analysis framework exists but has not been executed to produce numbers.
+- **HuggingFace**: `dreamerdeo/finqa`
+- **Size**: 8,281 QA pairs over 2,800 financial reports (S&P 500, 1999-2019)
+- **Labels**: Numerical answers with reasoning programs
+- **License**: MIT
+- **Why it matters**: Financial numerical reasoning. Useful for multi-task pretraining to build financial understanding.
 
----
+### 5.6 FiNER-139 (1.1M sentences, NER)
 
-## 13. Earnings Call Analysis (NB17a/17b -- Designed but Unexecuted)
+- **HuggingFace**: `nlpaueb/finer-139`
+- **Size**: 1,121,256 sentences from ~10K SEC filings
+- **Labels**: 139 XBRL entity types (NER, not sentiment)
+- **License**: CC-BY-SA-4.0
+- **Why it matters**: Multi-task training candidate. Financial NER as auxiliary task during fine-tuning can improve representation quality.
 
-Earnings calls are the model's weakest domain (69.12% accuracy vs 87-88% elsewhere). Two notebooks were designed to address this:
+### 5.7 Kaggle Sentiment-Labeled Headlines
 
-**NB17a (Error Mining)**: Train baseline, analyze truncation impact per source (Source 8 median 161 words, max 2,596), mine errors specifically from earnings call data, export tagged by linguistic pattern for VS augmentation.
-
-**NB17b (Improvement)**: Use VS-CoT to generate targeted augmentation for earnings call errors, retrain, and measure improvement.
-
-Neither has been executed. This is the most promising avenue for improvement given that earnings calls represent both the largest domain gap and the most practically valuable text type.
-
----
-
-## 14. Long-Context Ablation (NB18 -- Designed but Unexecuted)
-
-ModernBERT supports 8192 tokens via RoPE, but all experiments hardcode max_length=512. NB18 was designed to test 512 vs 1024 vs 2048 token contexts across 3 seeds (9 training runs total).
-
-Key hypothesis: Earnings call Q&A texts (Source 8, median 161 words, max 2,596) are silently truncated at 512 tokens. Extending context should improve accuracy on these long texts.
-
-The training function adapts batch size to context length:
-- 512: batch 8, grad accum 4 (effective 32)
-- 1024: batch 4, grad accum 8 (effective 32)
-- 2048: batch 2, grad accum 16 (effective 32)
-
-Estimated runtime: ~9 hours on T4. Not yet executed.
+- **Kaggle**: `cashbowman/sentiment-labeled-headlines`
+- **Labels**: Scores 1-5 (granular)
+- **Why it matters**: 5-point scale provides richer signal than 3-class. Can be bucketed for training.
 
 ---
 
-## 15. Multi-Benchmark Evaluation (NB19 -- Designed but Unexecuted)
+## 6. Unlabeled Corpora for Domain-Adaptive Pretraining <a id="6-unlabeled-corpora"></a>
 
-NB19 extends evaluation beyond FPB to three additional benchmarks:
+Domain-adaptive pretraining (DAPT) -- continued MLM on unlabeled financial text -- is the single most impactful training technique for financial NLP (Gururangan et al., ACL 2020). The following corpora are the best available.
 
-1. **FPB sentences_50agree** (4,846 press-release sentences) -- primary benchmark
-2. **FPB sentences_allagree** (2,264 unanimous-agreement) -- difficulty control
-3. **Twitter Financial News Sentiment** -- social media domain
-4. **FiQA 2018 Task 1** -- financial opinions with continuous sentiment scores mapped to 3-class via thresholds (default +/-0.2)
+### 6.1 SEC EDGAR Filings
 
-Compares ModernFinBERT against ProsusAI/finbert (in-domain baseline) and finbert-tone (zero-shot baseline). Includes:
-- Automatic label remapping detection (different models use different label orderings)
-- Sanity checks on obvious sentences
-- FiQA threshold sensitivity analysis (+/-0.1, +/-0.2, +/-0.3)
-- LaTeX table generation for paper insertion
+| Dataset | HuggingFace Path | Size | Coverage | License |
+|---------|-----------------|------|----------|---------|
+| PleIAs/SEC | `PleIAs/SEC` | 7.25B words (245K filings) | 10-K, 1993-2024 | Not specified |
+| EDGAR-CORPUS | `eloukas/edgar-corpus` | 220K filings, billions of tokens | 10-K, 1993-2020 | Apache 2.0 |
+| SEC Filings Index | `arthrod/SEC_filings_1994_2024` | Metadata only | All form types, 1994-2024 | Not specified |
 
-Estimated runtime: ~1 hour on T4 (evaluation only). Not yet executed.
+**Recommended**: Use `eloukas/edgar-corpus` (Apache 2.0 license, clean text with tables stripped) as primary DAPT corpus. Supplement with `PleIAs/SEC` for 2020-2024 coverage.
 
----
+**Raw EDGAR access**: SEC EDGAR FULL-TEXT search at `efts.sec.gov/LATEST/search-index` provides direct access to all public filings. Free, no API key needed. Can download 10-K, 10-Q, 8-K filings directly.
 
-## 16. Skills Architecture
+### 6.2 Financial News
 
-The project includes two Claude Code skills that serve as reusable tools:
+| Dataset | Path | Size | Coverage |
+|---------|------|------|----------|
+| Financial-News-Multisource | `Brianferrell787/financial-news-multisource` | 57.1M rows, 24 subsets | Bloomberg, Reuters, CNBC, NYT, Yahoo Finance, Reddit, 1990-2025 |
+| FNSPID | `Zihan1004/FNSPID` | 15.7M news + 29.7M stock prices | S&P 500, 1999-2023 |
 
-### Financial Sentiment Engine Skill
+**Recommended**: `financial-news-multisource` is the largest unified financial news corpus available. Research-only license.
 
-A structured prompt for Claude that implements direct classification of financial sentiment. Key design decisions:
-- **No chain-of-thought for short text** -- based on Vamvourellis & Mehta (2025) finding that reasoning causes "overthinking"
-- **Investor-lens labels**: POSITIVE = likely increases stock price, not general positivity
-- **Text-length-dependent framework**: Short (direct), medium (label-first/LIRA), long (analogical reasoning)
-- **Calibrated probabilities**: High 0.80-0.95, Moderate 0.60-0.79, Low 0.40-0.55
+### 6.3 Earnings Call Transcripts
 
-In the blind benchmark, this skill achieved 72.8% accuracy / 0.703 F1 on 723 samples -- significantly below ModernFinBERT's 83.1%.
+| Source | Size | Access |
+|--------|------|--------|
+| kurry/sp500_earnings_transcripts (HF) | 33,000+ transcripts, 685 companies | HuggingFace |
+| jlh-ibm/earnings_call (HF) | 188 transcripts + stock prices, NASDAQ, 2016-2020 | HuggingFace |
+| Seeking Alpha / Motley Fool transcripts | Millions of transcripts | Web scraping (ToS restrictions) |
 
-### Verbalized Sampling Augment Skill
+**Recommended**: `kurry/sp500_earnings_transcripts` provides excellent coverage. Earnings calls capture spoken corporate financial language that's distinct from written news/filings.
 
-A data augmentation skill that implements VS-CoT for generating diverse financial sentiment training data. Used to produce the DataBoost augmentation (246 samples in one experiment, 410 in another).
+### 6.4 Central Bank Communications
 
----
+| Source | Size | Access |
+|--------|------|--------|
+| BIS speeches | 1996-present, thousands of speeches | bis.org (free) |
+| ECB speeches | 1997-present | ecb.europa.eu (free) |
+| Fed FOMC minutes | 1993-present | federalreserve.gov (free) |
+| Fed Beige Book | 1996-present | federalreserve.gov (free) |
 
-## 17. Limitations and Open Questions
+**Why it matters**: Central bank language has unique characteristics (hedging, forward guidance, policy stance) that make it a valuable pretraining domain. Models trained on this text better understand uncertainty and conditionality.
 
-### Acknowledged Limitations (from paper)
-1. Single benchmark evaluation (FPB only -- NB19 designed but unrun)
-2. Base models only (110-149M parameters)
-3. English only
-4. Single full fine-tuning configuration (hyperparameters not tuned)
-5. 68% Canadian mining bias in Source 4
-6. Heterogeneous training data (15-161 median words, 3.4-13.9% NEG rates across sources)
-7. Limited architecture comparison (DeBERTa-v3 collapsed due to LoRA + gradient checkpointing incompatibility)
-8. Self-training used only financial tweets
-9. Calibration scope limited (temperature learned on training distribution)
+### 6.5 Stock Market Social Media (Unlabeled)
 
-### Additional Observations
+| Dataset | Path | Size |
+|---------|------|------|
+| StephanAkkerman/stock-market-tweets-data | HuggingFace | 923,673 tweets (Apr-Jul 2020) |
+| Reddit WallStreetBets dumps | Various | Millions of posts |
+| StockTwits historical data | StockTwits API | Billions of messages |
 
-1. **The calibration experiment needs re-running**: The NB16 results (ECE=0.0002, T=1.0003) are from in-sample evaluation and are not informative. The planned 5-fold CV was skipped.
+### 6.6 Additional Financial Text Sources
 
-3. **Error analysis sections in the paper are incomplete**: Sections 5.6 (Error Analysis) and Table 11 (Calibration) are marked TBD, awaiting NB15 and NB16 results respectively.
-
-4. **Multi-seed results in the paper are partial**: Table 8 shows summary statistics but individual per-seed values are marked TBD.
-
-5. **Earnings call performance (69%) is the largest gap**: This is both the weakest domain and the most potentially valuable for finance applications. The NB17a/17b pipeline was designed to address this but hasn't been run.
-
-6. **No domain pre-training comparison**: The paper explicitly fine-tunes from vanilla ModernBERT to isolate architecture contribution, but doesn't compare against a version with continued pre-training on financial text. The TODOS.md lists this as a P2 priority requiring 10-50GB of financial text and ~2 weeks.
-
----
-
-## 18. What the Paper Does Well
-
-1. **Methodological rigor**: The held-out protocol, 3-level deduplication audit, and 2x2 factorial design show careful experimental control. Negative results (self-training) are reported honestly.
-
-2. **Practical framing**: The Claude comparison answers the real question practitioners ask: "should I fine-tune or just prompt GPT-4?" The answer (fine-tune, 10pp better, 800x cheaper) is clear and actionable.
-
-3. **DataBoost efficiency**: 246 samples producing 7.8pp F1 improvement is remarkably sample-efficient. The VS-CoT technique for targeted augmentation of misclassified examples is a practical contribution.
-
-4. **LoRA regularization insight**: The 2x2 experiment provides clean evidence that LoRA isn't just a computational convenience -- it actively improves generalization on small datasets through implicit regularization.
-
-5. **Reproducibility**: All notebooks run on Kaggle free GPU tier (~20 GPU hours total), all code/data/models are public. Total compute cost is minimal (~$11 for training + Claude API).
+- **IPO prospectuses**: Available via SEC EDGAR (S-1 filings). Dense financial language.
+- **Credit rating agency reports**: Partially available from S&P, Moody's, Fitch press releases.
+- **ESG reports**: Growing corpus, available from company investor relations pages.
+- **Financial textbooks**: Public domain older editions available on Project Gutenberg / Internet Archive.
+- **Loughran-McDonald financial word lists**: Not a corpus but provides domain vocabulary for augmentation.
+- **Financial regulations**: SEC, FINRA, CFTC regulatory texts. Free and public.
 
 ---
 
-## 19. Project Status Summary
+## 7. Market-Reaction Labeled Datasets (Distant Supervision) <a id="7-market-reaction"></a>
 
-| Component | Status | Notes |
-|---|---|---|
-| Paper (main.tex) | ~85% complete | Error analysis, calibration, multi-seed details TBD |
-| NB01-NB04 | Complete | Core experiments (held-out, DataBoost, Claude, CV) |
-| NB06-NB07 | Complete | Multi-seed, self-training |
-| NB09b | Complete | BERT vs ModernBERT CV |
-| NB12 | Complete | LoRA vs full FT (2x2) |
-| NB13 | Complete | DeBERTa baseline (failed due to incompatibility) |
-| NB14 | Complete | Production model training |
-| NB15 | Code ready, unexecuted | Error analysis |
-| NB16 | Executed but flawed | Calibration on in-sample data |
-| NB17a/17b | Code ready, unexecuted | Earnings call improvement |
-| NB18 | Code ready, unexecuted | Long-context ablation (~9hr on T4) |
-| NB19 | Code ready, unexecuted | Multi-benchmark eval (~1hr on T4) |
-| Model on HuggingFace | Published | `neoyipeng/ModernFinBERT-base` |
-| Dataset on HuggingFace | Published | `neoyipeng/financial_reasoning_aggregated` |
-| Demo app | Built | Streamlit app in `demo/` |
+These datasets use stock price movements to automatically assign sentiment labels. Labels are noisy but free and massive in scale.
+
+| Dataset | Size | Label Method | Best For |
+|---------|------|-------------|----------|
+| JanosAudran/financial-reports-sec | 20.5M sentences | 1/5/30-day return windows | DAPT with weak labels |
+| FNSPID | 15.7M news + prices | Price-aligned news | News-price sentiment |
+| FinMarBa | 61K Bloomberg headlines | Market-movement labels | High-quality distant labels |
+
+**Best practice**: Use market-reaction labels as auxiliary training signal or for pretraining, not as primary fine-tuning labels. A 30-day return window produces more reliable labels than 1-day for longer documents (10-K filings). For news headlines, 1-day returns may be appropriate.
+
+**Loughran-McDonald lexicon as distant supervisor**: The LM dictionary provides six financial sentiment categories (negative, positive, litigious, uncertainty, constraining, superfluous) derived from 10-K filings. Can be used to auto-label sentences containing LM dictionary words. Recent work (EnhancedFinSentiBERT, 2025) integrates LM signals as a feature branch alongside BERT, achieving 87.0% F1 on FPB.
 
 ---
 
-## 20. Key Numerical Claims (Quick Reference)
+## 8. What the Best Financial Language Models Used <a id="8-what-top-models-used"></a>
 
-| Claim | Number | Source |
-|---|---|---|
-| Protocol gap | 6.44pp (86.88% vs 80.44%) | NB01 vs NB04 |
-| ModernBERT vs BERT (held-out) | +7.84pp accuracy | NB09 |
-| ModernBERT vs BERT (CV) | +1.09pp, p=0.093 | NB09b |
-| DataBoost F1 improvement | +7.84pp | NB02 |
-| DataBoost accuracy improvement | +2.92pp | NB02 |
-| Fine-tuned vs Claude | +10.38pp accuracy | NB03 |
-| Cost advantage vs Claude | 800x cheaper | NB03 |
-| Speed advantage vs Claude | 500-1000x faster | NB03 |
-| LoRA vs Full FT (baseline) | +3.69pp | NB12 |
-| LoRA vs Full FT (DataBoost) | +1.19pp | NB12 |
-| DataBoost under Full FT | +4.15pp acc, +10.4pp F1 | NB12 |
-| Multi-seed std (accuracy) | <1% across all metrics | NB06 |
-| FPB allAgree (best) | 95.14% acc, 94.17% F1 | NB02 |
-| Training data contamination | 0 matches (exact, fuzzy, semantic) | NB09a/11 |
-| Total GPU compute | ~20 hours on T4 | Paper |
-| Total training cost | ~$11 | Paper |
-| Trainable parameters (LoRA) | 1.1M / 149M (0.7%) | Paper |
-| Inference throughput (peak) | 107 samples/sec (MPS batch 32) | Benchmark |
-| Earnings call accuracy | 69.12% (weakest domain) | NB03 |
+Understanding what data the top models trained on reveals what works:
+
+| Model | Base | Pretraining Corpus | Corpus Size | FPB Result |
+|-------|------|--------------------|-------------|------------|
+| ProsusAI/FinBERT | BERT-base | Reuters TRC2 (financial subset) | Undisclosed | 88.9% acc |
+| FinBERT (Yang et al.) | BERT-base | 10-K + financial news + earnings calls | 4.9B tokens | 79.3% acc* |
+| BloombergGPT | From scratch (50B) | FinPile: 40% web/news, 40% filings, 20% other | 363B financial + 345B general | N/A |
+| FinTral | Mistral-7B | FinSet: C4-finance + SEC EDGAR + news + social media | 20B tokens | Beats GPT-4 on 5/9 tasks |
+| EnhancedFinSentiBERT | BERT | Financial news + analyst reports (2010-2024) | ~1GB text, 9M+ sentences | 87.0% F1 |
+| FinRoBERTa-FSA | RoBERTa | Financial domain pretraining + FPB fine-tuning | Undisclosed | ~97% acc |
+
+*Yang FinBERT's 79.3% is on analyst report test set, not FPB.
+
+**Key insight**: Every model that achieves >88% on FPB has domain-adaptive pretraining on financial text. The models that skip DAPT and go straight to fine-tuning plateau around 80-85%. This is the single most important gap in current ModernFinBERT training.
+
+### Reproducible Open-Source Ceiling
+
+The maximum openly available pretraining corpus:
+- **SEC filings**: PleIAs/SEC (7.25B words) + EDGAR-CORPUS (220K filings, ~6B tokens)
+- **Financial news**: Financial-News-Multisource (57M rows)
+- **Earnings calls**: kurry/sp500_earnings_transcripts (33K+)
+- **Central bank**: BIS + ECB + Fed speeches and minutes
+- **Social media**: Stock tweets (923K) + StockTwits + Reddit finance subs
+
+**Estimated total**: 15-20B tokens of financial text, comparable to what ProsusAI and Yang used, and ~5% of BloombergGPT's financial corpus. More than sufficient for continued pretraining of an encoder model.
+
+---
+
+## 9. State-of-the-Art Training Methods <a id="9-sota-methods"></a>
+
+### 9.1 Domain-Adaptive Pretraining (DAPT)
+
+**Foundation**: Gururangan et al. (ACL 2020) "Don't Stop Pretraining" showed that continued MLM pretraining on domain-specific text consistently improves downstream performance. Combining DAPT then TAPT gave the best results.
+
+**For finance specifically**:
+- Every top-performing financial model uses DAPT
+- Continued pretraining from a strong general checkpoint (BERT/RoBERTa/ModernBERT) is far more cost-effective than pretraining from scratch
+- Mix ~70-80% financial text with ~20-30% general text to prevent catastrophic forgetting (GeoGalactica used 8:1:1 ratio)
+- Even 10% of a well-selected corpus matches full-corpus performance (AWS FinPythia, EMNLP 2024)
+
+### 9.2 Task-Adaptive Pretraining (TAPT)
+
+Continue MLM pretraining on unlabeled examples from the target task distribution (e.g., financial headlines if the task is headline sentiment). Even a few thousand unlabeled examples help. Run 50-100 epochs of MLM on them before fine-tuning.
+
+**Pipeline**: General pretrain -> DAPT on financial corpus -> TAPT on task-specific data -> supervised fine-tuning
+
+### 9.3 Data Mixing and Selection
+
+- **DoReMi** (NeurIPS 2023): Use a proxy model to find optimal domain weights, then resample training data. +6.5% on average over default weights.
+- **Perplexity-based filtering**: Select highest-quality financial samples rather than using everything. AWS FinPythia achieved full performance with 10% of corpus using perplexity + token-type entropy filtering.
+- **Anti-catastrophic-forgetting**: Include 5-30% general-domain data during continued pretraining.
+
+### 9.4 LLM-Based Labeling at Scale
+
+- **GPT-4o/Claude as teacher**: Use LLMs to label financial sentiment at scale, then distill into small encoder.
+- **Active learning** (Fed Reserve M-RARU, 2025): 80% reduction in labeling samples needed by selecting only the most informative points for LLM labeling.
+- **SIEVE** (2024): Fine-tune lightweight encoder on LLM annotations using active learning -- 500 filtering operations for the cost of 1 GPT-4o call.
+- **Multi-LLM consensus**: NOSIBLE dataset used 8 LLMs for labeling. Consensus reduces individual model bias.
+- **Cost-effective pipeline**: (1) Loughran-McDonald dictionary for initial distant labels on large corpus, (2) GPT-4o/Claude with active learning on ~2-5K high-value examples, (3) distill into target encoder.
+
+### 9.5 Contrastive Learning
+
+- **SuCroMoCo** (Knowledge-Based Systems, 2024): Supervised Cross-Momentum Contrast aligns financial text with prototypical sentiment representations. Outperforms both PLM-based approaches and LLMs on financial benchmarks.
+- **Practical approach**: Add SupCon (supervised contrastive) loss alongside cross-entropy during fine-tuning to learn tighter sentiment clusters.
+
+### 9.6 Multi-Task Learning
+
+- Train sentiment + NER + relation extraction jointly (IJCAI 2020 FinBERT used 6 simultaneous pretraining tasks)
+- Recent work (2024) shows joint training reduces reliance on external knowledge and prevents error propagation
+- Candidate auxiliary tasks: financial NER (FiNER-139), fact verification (Fin-Fact), financial QA (FinQA)
+
+### 9.7 Handling Financial Sentiment Challenges
+
+| Challenge | What It Is | Mitigation |
+|-----------|-----------|------------|
+| Neutral dominance | ~60% of FPB is neutral | Weighted loss or dedicated neutral feature branch |
+| Negation/hedging | "Not unprofitable" = positive | Negation-aware attention or augmentation with negated examples |
+| Forward-looking | "Revenue expected to decline" | Include forward-looking statements in training data (earnings calls are rich in these) |
+| Entity-level conflict | Same sentence, different sentiment per entity | Train on SEntFiN / FinEntity for entity-aware sentiment |
+| Domain vocabulary | "Haircut" ≠ barbershop | DAPT on financial text handles this naturally |
+| Class imbalance | Varies by source | Stratified sampling + focal loss |
+
+### 9.8 Base Model Choice
+
+| Model | Params | Context | Speed | Best For |
+|-------|--------|---------|-------|----------|
+| BERT-base | 110M | 512 | Baseline | Legacy baseline |
+| RoBERTa-base | 125M | 512 | ~1x BERT | Better pretraining recipe |
+| DeBERTa-v3-base | 184M | 512 | ~0.5x ModernBERT | **Best task accuracy**, best sample efficiency |
+| ModernBERT-base | 149M | 8,192 | 2-4x DeBERTa | **Best speed/memory**, long context |
+
+**Critical finding** (April 2025 paper): When trained on identical data, DeBERTa-v3 outperforms ModernBERT on benchmark accuracy and reaches higher performance significantly earlier in training. ModernBERT's advantages may partly stem from superior training data (2T tokens) rather than architecture alone.
+
+**Recommendation**: Train both ModernBERT-base and DeBERTa-v3-base variants. ModernBERT for production (speed + long context for earnings calls), DeBERTa-v3 for maximum accuracy on short text.
+
+### 9.9 Key Recent Papers
+
+| Paper | Year | Key Contribution |
+|-------|------|-----------------|
+| "Reasoning or Overthinking" | 2025 | GPT-4o *without* CoT beats GPT-4o *with* CoT on financial sentiment -- overthinking hurts |
+| FinSentLLM | 2025 | Multi-LLM ensemble + semantic features, +3-6% over FinBERT without fine-tuning |
+| EnhancedFinSentiBERT | 2025 | Dictionary knowledge + neutral feature extraction = 87.0% F1 on FPB |
+| TinyFinBERT | 2024 | GPT-4o augmentation + knowledge distillation to tiny model |
+| Fed Reserve M-RARU | 2025 | Active knowledge distillation, 80% sample reduction |
+| SuCroMoCo | 2024 | Supervised contrastive learning beats both PLMs and LLMs |
+| AWS FinPythia | 2024 | 10% of corpus = full performance with smart selection |
+| ModernBERT vs DeBERTaV3 | 2025 | DeBERTaV3 wins on accuracy with same data; ModernBERT wins on efficiency |
+
+---
+
+## 10. Recommended Training Pipeline <a id="10-recommended-pipeline"></a>
+
+Based on all findings, here is the recommended pipeline for training the best financial sentiment model:
+
+### Phase 1: Domain-Adaptive Pretraining (DAPT)
+
+**Objective**: Continued MLM pretraining to inject financial domain knowledge into the base model.
+
+**Corpus** (combine these, total ~10-15B tokens):
+1. `eloukas/edgar-corpus` -- 220K 10-K filings, Apache 2.0 (primary)
+2. `PleIAs/SEC` -- 7.25B words of 10-K filings, 1993-2024 (supplement for recent years)
+3. `Brianferrell787/financial-news-multisource` -- 57M rows of financial news
+4. `kurry/sp500_earnings_transcripts` -- 33K earnings call transcripts
+5. Central bank communications (BIS, ECB, Fed speeches/minutes)
+6. `StephanAkkerman/stock-market-tweets-data` -- 923K financial tweets (unlabeled)
+
+**Mix ratio**: 75% financial + 25% general (use a Wikipedia/BookCorpus sample to prevent forgetting)
+
+**Data selection**: Use perplexity-based filtering to select highest-quality financial text. Target 2-5B tokens for continued pretraining (sufficient for encoder models).
+
+**Duration**: ~50K-100K steps, batch size 256, learning rate ~1e-4 with linear warmup
+
+### Phase 2: Task-Adaptive Pretraining (TAPT)
+
+**Objective**: Continue MLM on unlabeled text similar to the downstream task.
+
+**Corpus**: Collect all text from your labeled datasets (strip labels), plus:
+- Financial headlines from news corpora (matching FPB-style text)
+- Short financial commentary (matching tweet-style text)
+- Earnings call excerpts (matching EC-style text)
+
+**Duration**: 50-100 epochs on the task-specific unlabeled data
+
+### Phase 3: Supervised Fine-Tuning
+
+**Training data** (combine, ~250K+ total after dedup):
+1. **NOSIBLE/financial-sentiment** -- 100K (anchor dataset, highest volume)
+2. **flwrlabs/fingpt-sentiment-train** -- 76K (instruction format -> strip to text+label)
+3. **TimKoornstra/financial-tweets-sentiment** -- 38K (social media domain)
+4. **FinanceMTEB/FinSent** -- 10K (analyst report domain)
+5. **SEntFiN** -- 10.7K (entity-aware, resolve to sentence-level for standard training)
+6. **StockEmotions** -- 10K (collapse 12 emotions to 3-class)
+7. **Gold Commodity Headlines** -- 11.4K (commodity domain)
+8. **TheFinAI/finben-fomc** -- 496 (monetary policy domain)
+9. **yixuantt/FinEntity** -- 979 (entity-level)
+10. **Your existing aggregated dataset** -- 14K (current ModernFinBERT training data)
+
+**Deduplication**: Critical. Many datasets share source data (FPB appears in FinGPT, NOSIBLE may overlap with FPB). Use embedding-based dedup with cosine similarity > 0.95 threshold.
+
+**Label harmonization**: Map all to 3-class {negative, neutral, positive}. For bullish/bearish, map bearish->negative, bullish->positive.
+
+**Loss function**: Cross-entropy + SupCon (supervised contrastive) loss, weighted by inverse class frequency
+
+**Augmentation**: Use Verbalized Sampling (your existing DataBoost method) to augment misclassified validation examples
+
+### Phase 4: Evaluation
+
+**Held-out benchmarks** (not used in training):
+- Financial PhraseBank 50agree (standard)
+- Financial PhraseBank allagree (high-agreement subset)
+- FiQA-SA (aspect-based)
+- Twitter Financial News Sentiment
+- FOMC Hawkish-Dovish
+- Your existing blind test set (723 samples)
+
+**Protocols**:
+- 10-fold CV on FPB (for comparability with literature)
+- Held-out evaluation (your established protocol)
+- Multi-seed for statistical significance
+
+### Phase 5: LLM Labeling for Additional Data (Optional)
+
+If more training data is needed:
+1. Take unlabeled financial news headlines from `financial-news-multisource`
+2. Use active learning (M-RARU approach) to select most uncertain/informative examples
+3. Label ~5-10K with Claude/GPT-4o using multi-LLM consensus
+4. Add to training set and retrain
+
+### Expected Outcome
+
+Based on literature, this pipeline should achieve:
+- **FPB 50agree**: 89-92% accuracy (up from 86.88% current CV, 80.44% held-out)
+- **FPB allagree**: 96-98% accuracy (up from 95.14%)
+- The DAPT phase alone should add +3-5pp over current results
+- The expanded training data should add another +2-3pp
+
+---
+
+## 11. Complete Dataset Reference Table <a id="11-reference-table"></a>
+
+### Labeled Datasets
+
+| # | Dataset | Path | Size | Labels | Domain | License | Priority |
+|---|---------|------|------|--------|--------|---------|----------|
+| 1 | NOSIBLE Financial Sentiment | `NOSIBLE/financial-sentiment` | 100K | 3-class | News | ODC-By | **P0** |
+| 2 | FinGPT Sentiment Train | `flwrlabs/fingpt-sentiment-train` | 76.7K | 3+7 class | Mixed | MIT | **P0** |
+| 3 | TimKoornstra Financial Tweets | `TimKoornstra/financial-tweets-sentiment` | 38K | 3-class | Social | MIT | **P0** |
+| 4 | JanosAudran SEC Reports | `JanosAudran/financial-reports-sec` | 20.5M | Binary (market) | SEC 10-K | Apache 2.0 | **P1** |
+| 5 | FinanceMTEB FinSent | `FinanceMTEB/FinSent` | 10K | 3-class | Analyst | N/S | **P1** |
+| 6 | SEntFiN 1.0 | Paper / GitHub | 10.7K | Entity-level 3-class | News | N/S | **P1** |
+| 7 | StockEmotions | Paper (AAAI 2023) | 10K | 12 emotions + 2 sent | StockTwits | N/S | **P1** |
+| 8 | Gold Commodity Headlines | Paper | 11.4K | Sentiment | Commodity | N/S | **P1** |
+| 9 | FinGPT Sentiment Cls | `FinGPT/fingpt-sentiment-cls` | 47.5K | Binary | Mixed | N/S | **P2** |
+| 10 | Kaggle Finance News | `antobenedetti/finance-news-sentiments` | 32K | Sentiment | News | N/S | **P2** |
+| 11 | Synthetic Financial Tweets | `TimKoornstra/synthetic-financial-tweets-sentiment` | 1.4M | 3-class | Synthetic | MIT | **P2** |
+| 12 | FOMC Hawkish-Dovish | `TheFinAI/finben-fomc` | 496 | 3-class | Monetary | CC-BY-NC 4.0 | **P2** |
+| 13 | FinEntity | `yixuantt/FinEntity` | 979 | Entity-level 3-class | Finance | ODC-BY | **P2** |
+| 14 | FinMarBa | Paper (2025) | 61K | Market-reaction | Bloomberg | N/S | **P2** |
+| 15 | SemEval-2017 Task 5 | Academic | ~4K | Continuous scores | Mixed | Academic | **P2** |
+| 16 | Reddit WSB Sentiment | `SocialGrep/reddit-wallstreetbets-aug-2021` | ~100K+ | Pipeline labels | Reddit | N/S | **P3** |
+| 17 | Kaggle Labeled Headlines | `cashbowman/sentiment-labeled-headlines` | N/S | 1-5 scale | News | N/S | **P3** |
+| 18 | FiQA (already known) | `TheFinAI/fiqa-sentiment-classification` | 1.1K | Continuous | Mixed | MIT | Benchmark |
+| 19 | FPB (already known) | `takala/financial_phrasebank` | 4.8K | 3-class | News | CC-BY-NC-SA | Benchmark |
+| 20 | TFNS (already known) | `zeroshot/twitter-financial-news-sentiment` | 11.9K | 3-class | Twitter | MIT | Benchmark |
+
+### Unlabeled Corpora for DAPT
+
+| # | Dataset | Path | Size | Domain | License |
+|---|---------|------|------|--------|---------|
+| 1 | PleIAs/SEC | `PleIAs/SEC` | 7.25B words | 10-K filings | N/S |
+| 2 | EDGAR-CORPUS | `eloukas/edgar-corpus` | 220K filings | 10-K filings | Apache 2.0 |
+| 3 | Financial-News-Multisource | `Brianferrell787/financial-news-multisource` | 57M rows | News (24 sources) | Research |
+| 4 | FNSPID | `Zihan1004/FNSPID` | 15.7M news | News + prices | CC-BY-NC 4.0 |
+| 5 | SP500 Earnings Transcripts | `kurry/sp500_earnings_transcripts` | 33K transcripts | Earnings calls | N/S |
+| 6 | Stock Market Tweets | `StephanAkkerman/stock-market-tweets-data` | 923K tweets | Social | CC-BY 4.0 |
+| 7 | BIS Speeches | bis.org | Thousands | Central bank | Public |
+| 8 | ECB Speeches | ecb.europa.eu | Thousands | Central bank | Public |
+| 9 | Fed FOMC Minutes | federalreserve.gov | 1993-present | Monetary policy | Public |
+| 10 | SEC EDGAR Raw | efts.sec.gov | All filings | All SEC | Public |
+
+---
+
+## Appendix: Key References
+
+1. Gururangan et al. "Don't Stop Pretraining" (ACL 2020) -- DAPT/TAPT methodology
+2. Malo et al. "Good debt or bad debt" (2014) -- Financial PhraseBank
+3. Shah et al. "Trillion Dollar Words" (ACL 2023) -- FOMC sentiment
+4. Wu et al. "BloombergGPT" (2023) -- Financial LLM at scale
+5. Bhatia et al. "FinTral" (ACL Findings 2024) -- Multimodal financial LLM
+6. Thomas "TinyFinBERT" (2024) -- GPT-4o augmentation + distillation
+7. Fed Reserve "LLM on a Budget" (2025) -- Active knowledge distillation
+8. EnhancedFinSentiBERT (ScienceDirect 2025) -- Dictionary + neutral features
+9. SuCroMoCo (Knowledge-Based Systems 2024) -- Supervised contrastive learning
+10. AWS FinPythia (EMNLP 2024) -- Efficient data selection for financial DAPT
+11. ModernBERT vs DeBERTaV3 (arXiv 2025) -- Architecture comparison
+12. Sinha et al. "SEntFiN 1.0" (2022) -- Entity-aware financial sentiment
+13. NOSIBLE Financial Sentiment (2025) -- Multi-LLM consensus labeling at scale
