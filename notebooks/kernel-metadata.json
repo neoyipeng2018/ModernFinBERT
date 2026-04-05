@@ -1,7 +1,7 @@
 {
-  "id": "neoyipeng2018/modernfinbert-v2-train-benchmark",
-  "title": "ModernFinBERT v2 Train Benchmark",
-  "code_file": "01_train_and_benchmark.ipynb",
+  "id": "neoyipeng2018/modernfinbert-v2-finetune-long",
+  "title": "ModernFinBERT v2 Finetune Long",
+  "code_file": "01b_finetune_long.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": true,
