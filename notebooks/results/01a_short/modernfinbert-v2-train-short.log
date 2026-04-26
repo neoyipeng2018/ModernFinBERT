@@ -1,0 +1,125 @@
+[{"stream_name":"stderr","time":7.543550624,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.5436290360000005,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.543634987,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.543638294,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.177394851,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.177436278,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.177461108,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.17746672,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":49.578151216,"data":"env: UNSLOTH_DISABLE_FAST_GENERATION=1\n"}
+,{"stream_name":"stdout","time":49.805171726,"data":"🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.\n"}
+,{"stream_name":"stderr","time":60.017530777,"data":"2026-04-05 15:23:11.539614: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.018353267,"data":"WARNING: All log messages before absl::InitializeLog() is called are written to STDERR\n"}
+,{"stream_name":"stderr","time":60.018383002,"data":"E0000 00:00:1775402591.766081      23 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.018390657,"data":"E0000 00:00:1775402591.829362      23 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.018397727,"data":"W0000 00:00:1775402592.365618      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.018404945,"data":"W0000 00:00:1775402592.365667      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.018411765,"data":"W0000 00:00:1775402592.365671      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.018820469,"data":"W0000 00:00:1775402592.365674      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220547439,"data":"2026-04-05 15:23:11.539614: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.220572647,"data":"WARNING: All log messages before absl::InitializeLog() is called are written to STDERR\n"}
+,{"stream_name":"stderr","time":60.220579772,"data":"E0000 00:00:1775402591.766081      23 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.220585958,"data":"E0000 00:00:1775402591.829362      23 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.220621211,"data":"W0000 00:00:1775402592.365618      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220625087,"data":"W0000 00:00:1775402592.365667      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220627868,"data":"W0000 00:00:1775402592.365671      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220630548,"data":"W0000 00:00:1775402592.365674      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220633262,"data":"\n"}
+,{"stream_name":"stderr","time":60.22063558,"data":"2026-04-05 15:23:11.539614: E external/local_xla/xla/stream_executor/cuda/cuda_fft.cc:467] Unable to register cuFFT factory: Attempting to register factory for plugin cuFFT when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.220638212,"data":"WARNING: All log messages before absl::InitializeLog() is called are written to STDERR\n"}
+,{"stream_name":"stderr","time":60.220640867,"data":"E0000 00:00:1775402591.766081      23 cuda_dnn.cc:8579] Unable to register cuDNN factory: Attempting to register factory for plugin cuDNN when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.220643496,"data":"E0000 00:00:1775402591.829362      23 cuda_blas.cc:1407] Unable to register cuBLAS factory: Attempting to register factory for plugin cuBLAS when one has already been registered\n"}
+,{"stream_name":"stderr","time":60.220647347,"data":"W0000 00:00:1775402592.365618      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220650024,"data":"W0000 00:00:1775402592.365667      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.22065267,"data":"W0000 00:00:1775402592.365671      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stderr","time":60.220655264,"data":"W0000 00:00:1775402592.365674      23 computation_placer.cc:177] computation placer already registered. Please check linkage and avoid linking the same target more than once.\n"}
+,{"stream_name":"stdout","time":96.613545407,"data":"🦥 Unsloth Zoo will now patch everything to make training faster!\n"}
+,{"stream_name":"stdout","time":103.38239015,"data":"GPU: Tesla T4 (sm_75)\n"}
+,{"stream_name":"stdout","time":103.382427852,"data":"Max tokens: 512\n"}
+,{"stream_name":"stdout","time":106.762899628,"data":"DatasetDict({\n"}
+,{"stream_name":"stdout","time":106.762926601,"data":"    train: Dataset({\n"}
+,{"stream_name":"stdout","time":106.762933069,"data":"        features: ['text', 'label', 'source', 'source_domain', 'label_confidence', 'entity', 'entity_sentiment'],\n"}
+,{"stream_name":"stdout","time":106.763100677,"data":"        num_rows: 34597\n"}
+,{"stream_name":"stdout","time":106.763109629,"data":"    })\n"}
+,{"stream_name":"stdout","time":106.763114727,"data":"    validation: Dataset({\n"}
+,{"stream_name":"stdout","time":106.763119499,"data":"        features: ['text', 'label', 'source', 'source_domain', 'label_confidence', 'entity', 'entity_sentiment'],\n"}
+,{"stream_name":"stdout","time":106.763140844,"data":"        num_rows: 4325\n"}
+,{"stream_name":"stdout","time":106.763143721,"data":"    })\n"}
+,{"stream_name":"stdout","time":106.763146214,"data":"    test: Dataset({\n"}
+,{"stream_name":"stdout","time":106.763148866,"data":"        features: ['text', 'label', 'source', 'source_domain', 'label_confidence', 'entity', 'entity_sentiment'],\n"}
+,{"stream_name":"stdout","time":106.763169679,"data":"        num_rows: 4325\n"}
+,{"stream_name":"stdout","time":106.763174021,"data":"    })\n"}
+,{"stream_name":"stdout","time":106.763178457,"data":"})\n"}
+,{"stream_name":"stdout","time":106.951974213,"data":"\n"}
+,{"stream_name":"stdout","time":106.952001537,"data":"Label distribution (train, entity_sentiment):\n"}
+,{"stream_name":"stdout","time":107.518728985,"data":"  NEGATIVE: 9563\n"}
+,{"stream_name":"stdout","time":107.933996115,"data":"  NEUTRAL: 13236\n"}
+,{"stream_name":"stdout","time":108.385841333,"data":"  POSITIVE: 11798\n"}
+,{"stream_name":"stdout","time":108.572170213,"data":"\n"}
+,{"stream_name":"stdout","time":108.572211294,"data":"Entity coverage: 12366/34597 (35.7%)\n"}
+,{"stream_name":"stdout","time":110.597498915,"data":"==((====))==  Unsloth 2026.4.2: Fast Modernbert patching. Transformers: 4.56.2.\n"}
+,{"stream_name":"stdout","time":110.597536155,"data":"   \\\\   /|    Tesla T4. Num GPUs = 2. Max memory: 14.563 GB. Platform: Linux.\n"}
+,{"stream_name":"stdout","time":110.597540781,"data":"O^O/ \\_/ \\    Torch: 2.10.0+cu128. CUDA: 7.5. CUDA Toolkit: 12.8. Triton: 3.6.0\n"}
+,{"stream_name":"stdout","time":110.597544407,"data":"\\        /    Bfloat16 = FALSE. FA [Xformers = 0.0.34. FA2 = False]\n"}
+,{"stream_name":"stdout","time":110.597548345,"data":" \"-____-\"     Free license: http://github.com/unslothai/unsloth\n"}
+,{"stream_name":"stdout","time":110.597552259,"data":"Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!\n"}
+,{"stream_name":"stdout","time":113.345382552,"data":"Unsloth: QLoRA and full finetuning all not selected. Switching to 16bit LoRA.\n"}
+,{"stream_name":"stderr","time":117.470512957,"data":"Some weights of ModernBertForSequenceClassification were not initialized from the model checkpoint at unsloth/ModernBERT-base and are newly initialized: ['classifier.bias', 'classifier.weight']\n"}
+,{"stream_name":"stderr","time":117.470573044,"data":"You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.\n"}
+,{"stream_name":"stderr","time":117.47058115,"data":"\n"}
+,{"stream_name":"stderr","time":117.470586252,"data":"Some weights of ModernBertForSequenceClassification were not initialized from the model checkpoint at unsloth/ModernBERT-base and are newly initialized: ['classifier.bias', 'classifier.weight']\n"}
+,{"stream_name":"stderr","time":117.4705918,"data":"You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.\n"}
+,{"stream_name":"stdout","time":126.50608163,"data":"Unsloth: Making `model.base_model.model.model` require gradients\n"}
+,{"stream_name":"stdout","time":126.506125242,"data":"Unsloth: Upcasting `base_model.model.classifier` from float16 to float32 since it's in `modules_to_save`. Also allowing gradients.\n"}
+,{"stream_name":"stdout","time":136.417795798,"data":"train: 34597 rows tokenized\n"}
+,{"stream_name":"stdout","time":137.50102529,"data":"validation: 4325 rows tokenized\n"}
+,{"stream_name":"stdout","time":138.557208503,"data":"test: 4325 rows tokenized\n"}
+,{"stream_name":"stderr","time":143.149094035,"data":"==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1\n"}
+,{"stream_name":"stderr","time":143.149180403,"data":"   \\\\   /|    Num examples = 34,597 | Num Epochs = 3 | Total steps = 813\n"}
+,{"stream_name":"stderr","time":143.149186655,"data":"O^O/ \\_/ \\    Batch size per device = 64 | Gradient accumulation steps = 2\n"}
+,{"stream_name":"stderr","time":143.149192056,"data":"\\        /    Data Parallel GPUs = 1 | Total batch size (64 x 2 x 1) = 128\n"}
+,{"stream_name":"stderr","time":143.149197275,"data":" \"-____-\"     Trainable parameters = 3,381,507 of 152,988,678 (2.21% trained)\n"}
+,{"stream_name":"stderr","time":143.149202274,"data":"\n"}
+,{"stream_name":"stderr","time":143.149207125,"data":"==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1\n"}
+,{"stream_name":"stderr","time":143.14921273,"data":"   \\\\   /|    Num examples = 34,597 | Num Epochs = 3 | Total steps = 813\n"}
+,{"stream_name":"stderr","time":143.149217843,"data":"O^O/ \\_/ \\    Batch size per device = 64 | Gradient accumulation steps = 2\n"}
+,{"stream_name":"stderr","time":143.149222932,"data":"\\        /    Data Parallel GPUs = 1 | Total batch size (64 x 2 x 1) = 128\n"}
+,{"stream_name":"stderr","time":143.149228028,"data":" \"-____-\"     Trainable parameters = 3,381,507 of 152,988,678 (2.21% trained)\n"}
+,{"stream_name":"stderr","time":143.716857058,"data":"Unsloth: Not an error, but ModernBertForSequenceClassification does not accept `num_items_in_batch`.\n"}
+,{"stream_name":"stderr","time":143.716891119,"data":"Using gradient accumulation will be very slightly less accurate.\n"}
+,{"stream_name":"stderr","time":143.716895907,"data":"Read more on gradient accumulation issues here: https://unsloth.ai/blog/gradient\n"}
+,{"stream_name":"stderr","time":143.716901474,"data":"\n"}
+,{"stream_name":"stderr","time":143.716920856,"data":"Unsloth: Not an error, but ModernBertForSequenceClassification does not accept `num_items_in_batch`.\n"}
+,{"stream_name":"stderr","time":143.716925166,"data":"Using gradient accumulation will be very slightly less accurate.\n"}
+,{"stream_name":"stderr","time":143.716929416,"data":"Read more on gradient accumulation issues here: https://unsloth.ai/blog/gradient\n"}
+,{"stream_name":"stdout","time":151.143758102,"data":"Unsloth: Will smartly offload gradients to save VRAM!\n"}
+,{"stream_name":"stdout","time":1196.687054321,"data":"Test: accuracy=0.7695, macro_f1=0.7711\n"}
+,{"stream_name":"stdout","time":1212.12032354,"data":"\n"}
+,{"stream_name":"stdout","time":1212.120373431,"data":"              precision    recall  f1-score   support\n"}
+,{"stream_name":"stdout","time":1212.120378586,"data":"\n"}
+,{"stream_name":"stdout","time":1212.120381757,"data":"    NEGATIVE       0.78      0.81      0.79      1198\n"}
+,{"stream_name":"stdout","time":1212.120385012,"data":"     NEUTRAL       0.76      0.76      0.76      1648\n"}
+,{"stream_name":"stdout","time":1212.120388136,"data":"    POSITIVE       0.78      0.75      0.76      1479\n"}
+,{"stream_name":"stdout","time":1212.120391584,"data":"\n"}
+,{"stream_name":"stdout","time":1212.120394508,"data":"    accuracy                           0.77      4325\n"}
+,{"stream_name":"stdout","time":1212.120397497,"data":"   macro avg       0.77      0.77      0.77      4325\n"}
+,{"stream_name":"stdout","time":1212.120400496,"data":"weighted avg       0.77      0.77      0.77      4325\n"}
+,{"stream_name":"stdout","time":1212.120403822,"data":"\n"}
+,{"stream_name":"stdout","time":1212.120406695,"data":"\n"}
+,{"stream_name":"stdout","time":1212.120409596,"data":"Training log:\n"}
+,{"stream_name":"stdout","time":1212.12041256,"data":"  Epoch 1.0: loss=0.6671, acc=0.7313, f1=0.7320\n"}
+,{"stream_name":"stdout","time":1212.120428064,"data":"  Epoch 2.0: loss=0.6174, acc=0.7540, f1=0.7555\n"}
+,{"stream_name":"stdout","time":1212.120430677,"data":"  Epoch 3.0: loss=0.6106, acc=0.7598, f1=0.7610\n"}
+,{"stream_name":"stdout","time":1212.120449351,"data":"  Epoch 3.0: loss=0.5838, acc=0.7695, f1=0.7711\n"}
+,{"stream_name":"stdout","time":1220.115706531,"data":"Saved model to https://huggingface.co/neoyipeng/ModernFinBERT-v2-short\n"}
+,{"stream_name":"stdout","time":1221.819302009,"data":"Stage-1 model pushed to neoyipeng/ModernFinBERT-v2-short\n"}
+,{"stream_name":"stdout","time":1221.81933786,"data":"Next: run NB 01b to fine-tune on long-context data.\n"}
+,{"stream_name":"stderr","time":1227.221593655,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":1227.221630516,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":1227.389390985,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":1227.389418455,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":1228.017525651,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":1228.380566917,"data":"[NbConvertApp] Writing 270285 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":1230.866139269,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":1231.76539384,"data":"[NbConvertApp] Writing 514494 bytes to __results__.html\n"}
+]

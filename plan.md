@@ -1,1127 +1,571 @@
-# Plan: Collect, Align, Annotate & Balance Financial Sentiment Training Data
+# ModernFinBERT v2 — Recipe Fix Plan (Steps 1–5)
 
-## Overview
+> **Implementation status (2026-04-26):**
+> - **Phase 0 (pre-flight)** ✅ done — except 0.3 (branching skipped due to pre-existing dirty tree), 0.5/0.6 (Kaggle/HF API verification deferred to user).
+> - **Phase 1 (Stage 2 notebook)** ✅ done — `01c_finetune_medium.ipynb` rewritten; AST-clean; focal loss math + stratified-subset helper unit-tested.
+> - **Phase 4 (Stage 3 notebook)** ✅ done in parallel — `01b_finetune_long.ipynb` rewritten; AST-clean; truncation assertion verified against chunker output shape.
+> - **Phase 8.2 (RECIPE.md)** ✅ done — `notebooks/RECIPE.md` created and linked from all three training notebooks.
+> - **Phases 2, 3, 5, 6, 7, 8.1, 8.3** 🚧 blocked — require Kaggle T4 runtime, decision-gate inputs, or post-ship inputs that don't exist yet.
+>
+> **Files changed by this implementation pass:**
+> - `notebooks/01a_train_short.ipynb` (header link to RECIPE.md only)
+> - `notebooks/01c_finetune_medium.ipynb` (full Phase 1 rewrite + RECIPE link)
+> - `notebooks/01b_finetune_long.ipynb` (full Phase 4 rewrite + RECIPE link)
+> - `notebooks/archive/01c_finetune_medium__pre_v3.ipynb` (snapshot, new)
+> - `notebooks/archive/01b_finetune_long__pre_v3.ipynb` (snapshot, new)
+> - `notebooks/results/v2_recipe_v3_runs.md` (run tracker, new)
+> - `notebooks/RECIPE.md` (per-stage decision reference, new)
+>
+> **Next user action:** push `01c_finetune_medium.ipynb` to Kaggle (Phase 2.1) and run on T4. After ~4h, append the result row to `notebooks/results/v2_recipe_v3_runs.md` and apply the decision gate in Phase 3.
 
-Collect 5 datasets, harmonize to a unified schema, add entity/aspect-level sentiment annotations via agent labeling, then balance across sources and labels to produce the final training set.
+Implements the top-5 changes from `research.md`. Goal: recover Stage 1's short-test macro F1 (0.7711) at Stage 2 while pushing Stage 2's medium-test macro F1 above 0.55, then re-decide whether Stage 3 is worth running.
 
-**Target schema per row:**
-```
-text | label | source | entity | entity_sentiment
-```
+## Success criteria
 
-Where `entity` and `entity_sentiment` are the new columns added by agent labeling.
+| Metric                                | Current   | Target              |
+|---------------------------------------|-----------|---------------------|
+| S2 short-test macro F1 (regression)   | 0.7480    | ≥ 0.7600            |
+| S2 medium-test macro F1               | 0.5428    | ≥ 0.5800            |
+| S2 medium-test NEU recall             | 0.42      | ≥ 0.55              |
+| S2 medium-test NEG precision          | 0.35      | ≥ 0.50              |
+| S3 long-test macro F1 (if rerun)      | 0.5422    | ≥ 0.5800            |
+| Truncation rate at long stage         | 52.8%     | < 10%               |
 
----
+If S2 hits target, S3 is rerun. If S2 misses, fall through to the "drop S3, keep S2 as final" path.
 
-## Phase 1: Dataset Collection & Schema Alignment
+## Order of execution
 
-### 1.1 Dataset Inventory (What We're Working With)
+1. **Stage 2 first, single change at a time** so each step's effect is measurable.
+2. Within Stage 2: focal loss (Step 1) and macro-F1 selection (Step 4) are coupled — apply together since `load_best_model_at_end` requires both an eval cadence and a metric. Then add intra-epoch eval (Step 2). Then bump rank (Step 5).
+3. Stage 3 only after Stage 2 is fixed: change MAX_LENGTH and rank (Steps 3 + 5).
 
-| # | Dataset | HF Path | Rows | Text Col | Label Col | Label Format | Splits | License |
-|---|---------|---------|------|----------|-----------|-------------|--------|---------|
-| 1 | NOSIBLE Financial Sentiment | `NOSIBLE/financial-sentiment` | 100,000 | `text` | `label` | `"positive"/"negative"/"neutral"` (str) | train | ODC-By |
-| 2 | TimKoornstra Financial Tweets | `TimKoornstra/financial-tweets-sentiment` | 38,091 | `tweet` | `sentiment` | ClassLabel: 0=neutral, 1=bullish, 2=bearish | train | MIT |
-| 3 | FinanceMTEB FinSent | `FinanceMTEB/FinSent` | 9,996 | `text` | `label_text` | `"neutral"/"positive"/"negative"` (str) | train/test | N/S |
-| 4 | Aiera Transcript Sentiment | `Aiera/aiera-transcript-sentiment` | 700 | `transcript` | `sentiment` | `"positive"/"negative"/"neutral"` (str) | test only | MIT |
-| 5 | SubjECTive-QA | `gtfintechlab/SubjECTive-QA` | 2,747 | `ANSWER` | `OPTIMISTIC` | int: 0=negative, 1=neutral, 2=positive | train/val/test | CC-BY 4.0 |
+## Files touched
 
-### 1.2 Critical Issues Per Dataset
-
-**Aiera (Dataset 4):**
-- Test-only (700 samples). Designed as evaluation benchmark.
-- **Decision**: Include all 700 as training data since we have separate held-out benchmarks (FPB, FiQA, TFNS). Mark `source_domain = "earnings_calls"`.
-
-**TimKoornstra (Dataset 2):**
-- This is an aggregation of 9 sources (FiQA, IEEE DataPort, Kaggle, GitHub, Surge AI crypto/stock, HF). Already deduplicated by the dataset author.
-- Labels are bullish/bearish/neutral, not positive/negative/neutral.
-- **Decision**: Map bullish -> positive, bearish -> negative, neutral -> neutral.
-
-**NOSIBLE (Dataset 1):**
-- 100K samples labeled via multi-LLM consensus (8 models) with active learning + GPT-5.1 oracle validation.
-- LLM-generated labels may have systematic biases vs human annotators. But scale compensates.
-- **Decision**: Use as-is. Mark `label_confidence = "llm_consensus"`. Largest single source -- will be capped in balancing phase.
-
-**SubjECTive-QA (Dataset 5):**
-- 2,747 longform QA pairs from earnings call transcripts of 120 NYSE companies (2007-2021).
-- Has 6 subjective dimensions (CLEAR, ASSERTIVE, CAUTIOUS, OPTIMISTIC, SPECIFIC, RELEVANT), each labeled 0/1/2.
-- We use the `OPTIMISTIC` column as sentiment: 0=NEGATIVE (not optimistic), 1=NEUTRAL, 2=POSITIVE (optimistic).
-- The `ANSWER` column contains the response text from the earnings call -- this is the text we classify.
-- Gated dataset (auto-approval) -- must accept terms on HuggingFace before downloading.
-- **Decision**: Use `ANSWER` as text, `OPTIMISTIC` as label (mapped to 3-class sentiment). Use config `5768` (one seed split). Combine train+val+test splits for training. Mark `source_domain = "earnings_calls"`. The `CAUTIOUS` dimension could also be useful as auxiliary metadata but is not used for primary label.
-
-### 1.3 Unified Label Mapping
-
-All datasets mapped to: `{"NEGATIVE": 0, "NEUTRAL": 1, "POSITIVE": 2}`
-
-```python
-LABEL_MAPS = {
-    "nosible": {
-        "positive": "POSITIVE",
-        "negative": "NEGATIVE",
-        "neutral": "NEUTRAL",
-    },
-    "timkoornstra": {
-        0: "NEUTRAL",    # neutral
-        1: "POSITIVE",   # bullish
-        2: "NEGATIVE",   # bearish
-    },
-    "finsent": {
-        "neutral": "NEUTRAL",
-        "positive": "POSITIVE",
-        "negative": "NEGATIVE",
-    },
-    "aiera": {
-        "positive": "POSITIVE",
-        "negative": "NEGATIVE",
-        "neutral": "NEUTRAL",
-    },
-    "subjectiveqa": {
-        0: "NEGATIVE",   # not optimistic
-        1: "NEUTRAL",    # neutral
-        2: "POSITIVE",   # optimistic
-    },
-}
-```
-
-### 1.4 Per-Dataset Collection Code
-
-#### Dataset 1: NOSIBLE (100K)
-
-```python
-from datasets import load_dataset
-import pandas as pd
-
-ds = load_dataset("NOSIBLE/financial-sentiment", split="train")
-df_nosible = ds.to_pandas()
-
-df_nosible = df_nosible.rename(columns={"text": "text", "label": "raw_label"})
-df_nosible["label"] = df_nosible["raw_label"].map(LABEL_MAPS["nosible"])
-df_nosible["source"] = "nosible"
-df_nosible["source_domain"] = "financial_news"
-df_nosible["label_confidence"] = "llm_consensus"
-
-# Quality filters
-df_nosible = df_nosible[df_nosible["text"].str.len() >= 20]  # drop ultra-short
-df_nosible = df_nosible.dropna(subset=["text", "label"])
-
-df_nosible = df_nosible[["text", "label", "source", "source_domain", "label_confidence"]]
-print(f"NOSIBLE: {len(df_nosible)} rows, {df_nosible['label'].value_counts().to_dict()}")
-```
-
-#### Dataset 2: TimKoornstra Tweets (38K)
-
-```python
-ds = load_dataset("TimKoornstra/financial-tweets-sentiment", split="train")
-df_tweets = ds.to_pandas()
-
-df_tweets = df_tweets.rename(columns={"tweet": "text", "sentiment": "raw_label"})
-df_tweets["label"] = df_tweets["raw_label"].map(LABEL_MAPS["timkoornstra"])
-df_tweets["source"] = "timkoornstra_tweets"
-df_tweets["source_domain"] = "social_media"
-df_tweets["label_confidence"] = "human_aggregated"
-
-# Quality filters
-df_tweets = df_tweets[df_tweets["text"].str.len() >= 10]
-df_tweets = df_tweets.dropna(subset=["text", "label"])
-
-df_tweets = df_tweets[["text", "label", "source", "source_domain", "label_confidence"]]
-print(f"TimKoornstra: {len(df_tweets)} rows, {df_tweets['label'].value_counts().to_dict()}")
-```
-
-#### Dataset 3: FinanceMTEB FinSent (10K)
-
-```python
-ds = load_dataset("FinanceMTEB/FinSent")
-df_finsent = pd.concat([ds["train"].to_pandas(), ds["test"].to_pandas()])
-
-df_finsent["label"] = df_finsent["label_text"].map(LABEL_MAPS["finsent"])
-df_finsent["source"] = "financemteb_finsent"
-df_finsent["source_domain"] = "analyst_reports"
-df_finsent["label_confidence"] = "human"
-
-df_finsent = df_finsent[df_finsent["text"].str.len() >= 10]
-df_finsent = df_finsent.dropna(subset=["text", "label"])
-
-df_finsent = df_finsent[["text", "label", "source", "source_domain", "label_confidence"]]
-print(f"FinSent: {len(df_finsent)} rows, {df_finsent['label'].value_counts().to_dict()}")
-```
-
-#### Dataset 4: Aiera Transcript Sentiment (700)
-
-```python
-ds = load_dataset("Aiera/aiera-transcript-sentiment", split="test")
-df_aiera = ds.to_pandas()
-
-df_aiera = df_aiera.rename(columns={"transcript": "text", "sentiment": "raw_label"})
-df_aiera["label"] = df_aiera["raw_label"].map(LABEL_MAPS["aiera"])
-df_aiera["source"] = "aiera_transcripts"
-df_aiera["source_domain"] = "earnings_calls"
-df_aiera["label_confidence"] = "human"
-
-df_aiera = df_aiera[["text", "label", "source", "source_domain", "label_confidence"]]
-print(f"Aiera: {len(df_aiera)} rows, {df_aiera['label'].value_counts().to_dict()}")
-```
-
-#### Dataset 5: SubjECTive-QA (2.7K earnings call QA)
-
-```python
-# Note: gated dataset -- must accept terms at huggingface.co/datasets/gtfintechlab/SubjECTive-QA
-ds = load_dataset("gtfintechlab/SubjECTive-QA", "5768")  # use seed-5768 config
-df_sqqa = pd.concat([
-    ds["train"].to_pandas(),
-    ds["val"].to_pandas(),
-    ds["test"].to_pandas(),
-])
-
-# Use ANSWER (earnings call response) as text, OPTIMISTIC dimension as sentiment
-df_sqqa = df_sqqa.rename(columns={"ANSWER": "text", "OPTIMISTIC": "raw_label"})
-df_sqqa["label"] = df_sqqa["raw_label"].map(LABEL_MAPS["subjectiveqa"])
-df_sqqa["source"] = "subjectiveqa"
-df_sqqa["source_domain"] = "earnings_calls"
-df_sqqa["label_confidence"] = "human"
-
-# Quality filters
-df_sqqa = df_sqqa[df_sqqa["text"].str.len() >= 20]
-df_sqqa = df_sqqa.dropna(subset=["text", "label"])
-
-df_sqqa = df_sqqa[["text", "label", "source", "source_domain", "label_confidence"]]
-print(f"SubjECTive-QA: {len(df_sqqa)} rows, {df_sqqa['label'].value_counts().to_dict()}")
-```
-
-### 1.5 Combine All Datasets
-
-```python
-df_all = pd.concat([
-    df_nosible,
-    df_tweets,
-    df_finsent,
-    df_aiera,
-    df_sqqa,
-], ignore_index=True)
-
-print(f"Total before dedup: {len(df_all)}")
-print(f"Per source:\n{df_all['source'].value_counts()}")
-print(f"Per label:\n{df_all['label'].value_counts()}")
-```
-
-**Expected row counts after collection:**
-
-| Source | Rows (approx) |
-|--------|---------------|
-| nosible | ~98K |
-| timkoornstra_tweets | ~37K |
-| financemteb_finsent | ~10K |
-| aiera_transcripts | 700 |
-| subjectiveqa | ~2.7K |
-| **Total** | **~148K** |
+- `notebooks/01c_finetune_medium.ipynb` — Steps 1, 2, 4, 5.
+- `notebooks/01b_finetune_long.ipynb` — Steps 2, 3, 4, 5.
+- No script changes; this is a notebook-only plan.
 
 ---
 
-## Phase 2: Deduplication
+## Step 1 — Drop inverse-frequency class weights, use focal loss
 
-Three-level dedup following established project patterns (from notebook 09a):
+**Why.** Inverse-frequency weights `[4.18, 1.15, 0.53]` over-correct: NEG recall jumps to 0.59 but NEG precision collapses to 0.35 (research.md §3). Focal loss attacks the *hard-example* problem (NEU↔POS confusion in earnings prose) instead of the *class-prior* problem, so it doesn't bias the decision boundary toward NEG. γ=2 is the FAIR-paper default and a good starting point.
+
+**Where.** `notebooks/01c_finetune_medium.ipynb`, cell `cell-10`.
+
+**Change.** Replace `WeightedTrainer` with `FocalTrainer`:
 
 ```python
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
+# Replace the existing CrossEntropyLoss-based WeightedTrainer in cell-10 with:
+import torch
+import torch.nn.functional as F
+from transformers import Trainer
+
+FOCAL_GAMMA = 2.0  # FAIR default; raise to 3.0 if NEU still under-represented
+
+class FocalTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits  # (B, C)
+        log_probs = F.log_softmax(logits, dim=-1)
+        log_pt = log_probs.gather(1, labels.unsqueeze(1)).squeeze(1)
+        pt = log_pt.exp()
+        loss = -((1 - pt) ** FOCAL_GAMMA) * log_pt
+        loss = loss.mean()
+        return (loss, outputs) if return_outputs else loss
+```
+
+Then swap the trainer instantiation:
+
+```python
+# was: trainer = WeightedTrainer(...)
+trainer = FocalTrainer(
+    model=model,
+    processing_class=tokenizer,
+    train_dataset=tokenized_med["train"],
+    eval_dataset=eval_subset,                          # ← from Step 2
+    compute_metrics=compute_metrics,
+    args=TrainingArguments(...),                      # ← see Step 2/4
+)
+```
+
+**Drop the class-weights block entirely** (the `Counter`, `class_weights`, `print(...)` lines) — focal loss replaces all of it. Also drop `from torch.nn import CrossEntropyLoss` and `from collections import Counter`.
+
+**Fallback.** If focal underperforms (S2 medium F1 < 0.55), fall back to **gentle** sqrt-inverse weights:
+
+```python
+class_weights = torch.tensor([2.05, 1.07, 0.73], device="cuda")  # sqrt(inverse-freq), normalized
+loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.05)
+```
+
+Don't go back to the `[4.18, 1.15, 0.53]` weights — those are the exact configuration that produced the regression.
+
+**Validation.** After Step 1+4 are in, the medium-test classification report must show NEG precision ≥ 0.50 (was 0.35) and NEU recall ≥ 0.55 (was 0.42). If either fails, raise γ to 3.0 before falling back to sqrt-weights.
+
+---
+
+## Step 2 — Intra-epoch eval on a subsampled eval set
+
+**Why.** Single end-of-epoch eval (research.md §3, §4) means we have no signal during training and no best-checkpoint selection. Eval on the full medium-val set takes ~9 minutes (3,683 rows × 4096 tokens, `eval_steps_per_second=0.222`); evaluating every 50 steps would balloon runtime by hours. A stratified 500-row subsample brings per-eval cost to ~70 seconds and preserves class proportions.
+
+**Where.** `01c_finetune_medium.ipynb` cell `cell-10` (and analogously in `01b_finetune_long.ipynb`).
+
+**Change.** Build a stratified eval subset, then point `eval_dataset` at it and switch to `eval_strategy="steps"`. Keep the *full* validation set for a final pre-test eval.
+
+```python
+# Add before the trainer instantiation:
 import numpy as np
 
-# Level 1: Exact text dedup (normalized)
-def normalize_text(t):
-    return re.sub(r"\s+", " ", str(t).strip().lower())
+def stratified_subset(ds, n_per_class=167, seed=3407):
+    """Return a class-stratified subset of `n_per_class * num_classes` rows."""
+    rng = np.random.default_rng(seed)
+    by_class = {c: [] for c in range(NUM_CLASSES)}
+    for i, lbl in enumerate(ds["labels"]):
+        by_class[lbl].append(i)
+    picked = []
+    for c, idxs in by_class.items():
+        take = min(n_per_class, len(idxs))
+        picked.extend(rng.choice(idxs, size=take, replace=False).tolist())
+    return ds.select(sorted(picked))
 
-df_all["text_norm"] = df_all["text"].apply(normalize_text)
-n_before = len(df_all)
-df_all = df_all.drop_duplicates(subset=["text_norm"], keep="first")
-print(f"Exact dedup: {n_before} -> {len(df_all)} ({n_before - len(df_all)} removed)")
-
-# Level 2: Near-duplicate detection via embeddings
-# Process in batches to handle ~148K texts
-model = SentenceTransformer("all-MiniLM-L6-v2")
-BATCH_SIZE = 512
-embeddings = model.encode(
-    df_all["text"].tolist(),
-    batch_size=BATCH_SIZE,
-    show_progress_bar=True,
-    normalize_embeddings=True,
-)
-
-# Block by source to find cross-source duplicates efficiently
-# (intra-source dupes already handled by exact dedup)
-# Use FAISS for efficient similarity search on 148K vectors
-import faiss
-
-dim = embeddings.shape[1]
-index = faiss.IndexFlatIP(dim)  # inner product = cosine for normalized vectors
-index.add(embeddings.astype(np.float32))
-
-# Find near-duplicates (cosine > 0.95)
-THRESHOLD = 0.95
-K = 10  # check top-10 neighbors
-distances, indices = index.search(embeddings.astype(np.float32), K)
-
-# Mark duplicates (keep first occurrence by index order)
-to_remove = set()
-for i in range(len(df_all)):
-    if i in to_remove:
-        continue
-    for j_idx, dist in zip(indices[i], distances[i]):
-        if j_idx > i and dist > THRESHOLD and j_idx not in to_remove:
-            to_remove.add(j_idx)
-
-n_before = len(df_all)
-df_all = df_all.drop(index=df_all.index[list(to_remove)]).reset_index(drop=True)
-print(f"Semantic dedup: {n_before} -> {len(df_all)} ({len(to_remove)} removed)")
-
-# Drop temp column
-df_all = df_all.drop(columns=["text_norm"])
+eval_subset = stratified_subset(tokenized_med["validation"], n_per_class=167)
+print(f"Eval subset size: {len(eval_subset)} (~500 stratified)")
 ```
+
+Then in `TrainingArguments`:
+
+```python
+args=TrainingArguments(
+    output_dir="./modernfinbert-v2-medium-output",
+    per_device_train_batch_size=16,
+    per_device_eval_batch_size=16,
+    gradient_accumulation_steps=2,
+    num_train_epochs=1,
+    learning_rate=5e-5,
+    weight_decay=0.001,
+    warmup_ratio=0.06,
+    lr_scheduler_type="cosine",
+    optim="adamw_8bit",
+    fp16=not is_bfloat16_supported(),
+    bf16=is_bfloat16_supported(),
+    seed=SEED,
+    group_by_length=True,
+    eval_strategy="steps",       # ← was "epoch"
+    eval_steps=50,               # ← S2: 461 total steps → ~9 evals/epoch
+    save_strategy="steps",       # ← match eval cadence
+    save_steps=50,
+    save_total_limit=3,
+    logging_strategy="steps",
+    logging_steps=25,            # ← halved so we see loss between evals
+    load_best_model_at_end=True,                  # ← Step 4
+    metric_for_best_model="eval_macro_f1",         # ← Step 4
+    greater_is_better=True,                       # ← Step 4
+    report_to="none",
+),
+```
+
+**After training, run a final eval on the *full* validation and test sets** (do this in `cell-11` — the existing post-training eval already uses `tokenized_med["test"]`, so it's covered; just reset `eval_dataset` first if needed):
+
+```python
+# In cell-11, before the test eval, swap back to full val for one final read:
+trainer.eval_dataset = tokenized_med["validation"]
+full_val = trainer.evaluate()
+print(f"Full val: acc={full_val['eval_accuracy']:.4f}, "
+      f"f1={full_val['eval_macro_f1']:.4f}")
+```
+
+**Stage 3 analog.** In `01b_finetune_long.ipynb`, do the same with `n_per_class=100` (300-row subset) and `eval_steps=10` (125 total steps → 12 evals).
+
+**Caveat about `load_best_model_at_end=True`.** The Stage 3 notebook has a comment ("avoid the unsloth classifier-reload bug after training"). If Stage 3 hits that bug after this change, fall back to `load_best_model_at_end=False` and select the best checkpoint manually:
+
+```python
+# Manual best-checkpoint selection after training (only if needed):
+import json, glob, os
+ckpt_dirs = sorted(glob.glob("./modernfinbert-v2-medium-output/checkpoint-*"))
+best = max(ckpt_dirs, key=lambda d: max(
+    (e.get("eval_macro_f1", -1) for e in json.load(open(f"{d}/trainer_state.json"))["log_history"]),
+    default=-1,
+))
+print(f"Best checkpoint: {best}")
+# then reload from `best` for evaluation
+```
+
+**Validation.** The trainer log must contain ≥ 8 `eval_macro_f1` entries after Step 2 is in (was 1).
 
 ---
 
-## Phase 3: Entity & Aspect Sentiment Annotation (Agent-Labeled)
+## Step 3 — Long-context truncation: pick a real cap
 
-Entity and entity_sentiment columns will be labeled entirely by the Claude Code agent during implementation. The agent reads the combined dataframe in batches, determines the entity and entity-level sentiment for each row using its own judgment, and writes the annotations directly. No API calls, no NLP packages, no scripts -- purely agent-determined.
+**Why.** 52.8% of long-stage training rows are truncated at MAX_LENGTH=6144 (research.md §4). The model is being trained on truncated long docs — half the supposed long-context advantage is fictitious. Two options:
 
-### 3.1 Annotation Specification
+**Option A (recommended): drop MAX_LENGTH to 4096.** This is the operational ceiling proven by Stage 2 (0% truncation). Stage 3 then becomes "more long-doc data at the same context length", which is the only thing the data actually supports given the chunking pipeline (`scripts/chunk_sources.py` chunks at 500–3072 tokens, so most "long" docs are only marginally over 4K when re-tokenized with the entity prefix).
 
-For each text, the agent determines:
-- **`entity`**: The primary financial entity this text is about. Uses canonical names:
-  - Company: full name (e.g., "Apple Inc.", "Tesla Inc.")
-  - Ticker only: with $ prefix (e.g., "$AAPL", "$TSLA")
-  - Commodity: standard name (e.g., "Gold", "Crude Oil")
-  - Index: standard abbreviation (e.g., "S&P 500", "NASDAQ")
-  - Sector: GICS sector name (e.g., "Technology", "Energy")
-  - Central Bank/Macro: (e.g., "Federal Reserve", "ECB")
-  - General market: `"MARKET"` when text discusses overall market conditions
-  - No entity: `"NONE"` when no identifiable financial entity
+**Option B: bump MAX_LENGTH to 8192.** Forces batch=2 (research.md §4) on T4 and a much smaller subsample, which contradicts the "more steps" recommendation in Step 5.
 
-- **`entity_sentiment`**: Sentiment specifically toward the extracted entity (POSITIVE / NEGATIVE / NEUTRAL). May differ from sentence-level label when multiple entities are present with conflicting sentiment.
+Pick A unless we have a specific dataset where >4096-token reasoning is essential. The token-length stats in the existing run (`min=378, median=6144, max=6144`) are partly a tokenizer artifact — the median equals the max because the cap was hit, not because the median doc is genuinely 6144 tokens.
 
-For texts with multiple entities, the agent selects the **most prominent** entity.
+**Where.** `notebooks/01b_finetune_long.ipynb`, cell `cell-2`.
 
-### 3.2 Agent Annotation Process
-
-The agent processes the dataframe in manageable batches (~500-1000 rows). For each batch:
-
-1. Agent reads the text and sentence-level label
-2. Agent determines entity and entity_sentiment using financial domain knowledge
-3. Agent writes the annotations as a CSV chunk
-4. Chunks are concatenated into the final annotated dataframe
+**Change (Option A).**
 
 ```python
-import pandas as pd
-import os
-
-# Agent produces annotation chunks as CSVs in this directory
-ANNOTATION_DIR = "data/processed/entity_annotations"
-os.makedirs(ANNOTATION_DIR, exist_ok=True)
-
-def prepare_batches(df, batch_size=500):
-    """Split dataframe into batches for agent annotation."""
-    n_batches = (len(df) + batch_size - 1) // batch_size
-    for i in range(n_batches):
-        start = i * batch_size
-        end = min(start + batch_size, len(df))
-        batch = df.iloc[start:end][["text", "label"]].copy()
-        batch.to_csv(f"{ANNOTATION_DIR}/batch_{i:04d}_input.csv", index=True)
-    print(f"Prepared {n_batches} batches of ~{batch_size} rows in {ANNOTATION_DIR}/")
-
-prepare_batches(df_all, batch_size=500)
-
-# After agent annotates all batches:
-def assemble_annotations(df, annotation_dir=ANNOTATION_DIR):
-    """Reassemble agent-annotated batches into the main dataframe."""
-    import glob
-    output_files = sorted(glob.glob(f"{annotation_dir}/batch_*_output.csv"))
-    if not output_files:
-        raise FileNotFoundError(f"No annotation outputs found in {annotation_dir}/")
-
-    annotations = pd.concat([pd.read_csv(f, index_col=0) for f in output_files])
-    df["entity"] = annotations["entity"].values
-    df["entity_sentiment"] = annotations["entity_sentiment"].values
-
-    # Validate
-    assert df["entity"].notna().all(), "Missing entity annotations"
-    assert df["entity_sentiment"].isin(["POSITIVE", "NEGATIVE", "NEUTRAL"]).all()
-    print(f"Assembled {len(output_files)} batches, {len(df)} total rows annotated")
-    print(f"Entity coverage (non-NONE): {(df['entity'] != 'NONE').mean():.1%}")
-    print(f"Entity sentiment distribution:\n{df['entity_sentiment'].value_counts()}")
-    return df
-
-df_all = assemble_annotations(df_all)
+# was: MAX_LENGTH = 6144
+MAX_LENGTH = 4096
 ```
 
-### 3.3 Annotation Guidelines for Agent
+Then in the training args (cell `cell-10`), the existing `per_device_train_batch_size=4, gradient_accumulation_steps=8` (eff. 32) can stay — but at 4096 we can comfortably double batch:
 
-When annotating, the agent applies these rules:
+```python
+per_device_train_batch_size=8,
+gradient_accumulation_steps=4,   # eff. batch 32 unchanged → comparable LR scaling
+```
 
-1. **Single entity, clear sentiment**: entity_sentiment = sentence label
-   - "Apple beat earnings expectations" -> entity="Apple Inc.", entity_sentiment=POSITIVE
+This doubles the optimizer-step count from 125 → 250 at the same effective batch size, addressing the "too few steps" finding in research.md §4.
 
-2. **Multiple entities, conflicting sentiment**: entity = most prominent, entity_sentiment = sentiment toward that entity
-   - "Tesla gained market share from Ford" -> entity="Tesla Inc.", entity_sentiment=POSITIVE (sentence might be NEUTRAL)
+**Add an explicit assertion to fail-fast on truncation:**
 
-3. **General market commentary**: entity="MARKET"
-   - "Stocks rallied on strong jobs data" -> entity="MARKET", entity_sentiment=POSITIVE
+```python
+n_truncated = sum(1 for l in lengths if l >= MAX_LENGTH)
+trunc_pct = n_truncated / len(lengths)
+print(f"  Truncated to {MAX_LENGTH}: {n_truncated} rows ({100*trunc_pct:.1f}%)")
+assert trunc_pct < 0.10, f"Truncation rate {100*trunc_pct:.1f}% > 10% — adjust MAX_LENGTH or chunk pipeline"
+```
 
-4. **Monetary policy**: entity = central bank
-   - "The Fed signaled rate cuts" -> entity="Federal Reserve", entity_sentiment=POSITIVE (dovish = expansionary)
-
-5. **No identifiable entity**: entity="NONE", entity_sentiment = sentence label
-   - "Investors remain cautious" -> entity="NONE", entity_sentiment=NEGATIVE
-
-6. **Normalize entity names**: Use canonical forms consistently across all rows
+**Validation.** Truncation rate must print < 10% before training starts.
 
 ---
 
-## Phase 4: Balancing
+## Step 4 — Macro F1 for model selection from Stage 2 onward
 
-### 4.1 Problem Statement
+**Why.** With 8/29/63 class proportions, `eval_loss` minimizes a weighted-by-prevalence quantity that the focal loss further distorts. `eval_macro_f1` is the metric we actually care about. Already partially covered in Step 2's `TrainingArguments`; this section is the explicit Stage 1 contrast and the Stage 3 application.
 
-Raw distribution is heavily skewed:
-- **Source imbalance**: NOSIBLE (98K) vs Aiera (700) = 140:1 ratio
-- **Label imbalance**: NEUTRAL dominates (~55-65% across most sources)
-- **Domain imbalance**: News-heavy, light on earnings calls and monetary policy
+**Stage 1 stays on `eval_loss`.** Labels are balanced and CE+loss-based selection landed on the right checkpoint (research.md §2). Do not change `01a_train_short.ipynb`.
 
-### 4.2 Balancing Strategy: Cap Large Sources, Keep Small Sources Natural
-
-The goal is a dataset where:
-1. No single source dominates (cap large sources)
-2. Small/rare sources (FOMC, Aiera) are kept at their natural size -- no upsampling
-3. Label balance is achieved via per-source stratified downsampling on large sources; any remaining imbalance is acceptable
+**Stage 2 + Stage 3.** Apply the three-line change shown in Step 2:
 
 ```python
-MAX_PER_SOURCE = 15_000  # Cap large sources
-
-def balance_dataset(df, max_per_source=MAX_PER_SOURCE, random_state=42):
-    """Cap large sources, keep small sources at natural size. Label-stratified downsampling."""
-
-    source_sizes = df["source"].value_counts()
-    print(f"Raw source sizes:\n{source_sizes}\n")
-
-    sampled_dfs = []
-    for source in df["source"].unique():
-        source_df = df[df["source"] == source]
-
-        if len(source_df) > max_per_source:
-            # Large source: stratified downsample to cap, balanced across labels
-            n_per_label = max_per_source // 3
-            label_dfs = []
-            for label in ["NEGATIVE", "NEUTRAL", "POSITIVE"]:
-                label_df = source_df[source_df["label"] == label]
-                if len(label_df) >= n_per_label:
-                    label_dfs.append(label_df.sample(n=n_per_label, random_state=random_state))
-                elif len(label_df) > 0:
-                    # Fewer than target -- take all available (no upsampling)
-                    label_dfs.append(label_df)
-            sampled_dfs.append(pd.concat(label_dfs, ignore_index=True))
-        else:
-            # Small source: keep all rows as-is
-            sampled_dfs.append(source_df)
-
-    df_balanced = pd.concat(sampled_dfs, ignore_index=True)
-
-    # Final shuffle
-    df_balanced = df_balanced.sample(frac=1, random_state=random_state).reset_index(drop=True)
-
-    return df_balanced
-
-
-df_balanced = balance_dataset(df_all)
-
-print(f"\nFinal balanced dataset: {len(df_balanced)} rows")
-print(f"\nSource distribution:\n{df_balanced['source'].value_counts()}")
-print(f"\nLabel distribution:\n{df_balanced['label'].value_counts()}")
-print(f"\nLabel by source:")
-print(df_balanced.groupby(["source", "label"]).size().unstack(fill_value=0))
+load_best_model_at_end=True,
+metric_for_best_model="eval_macro_f1",
+greater_is_better=True,
 ```
 
-### 4.3 Expected Output Distribution
+Confirm the `compute_metrics` function returns `macro_f1` under that exact key (it does in both notebooks):
 
-| Source | Rows (approx) | Treatment |
-|--------|---------------|-----------|
-| nosible | 15,000 | Capped (from ~98K), label-stratified 5K/5K/5K |
-| timkoornstra_tweets | 15,000 | Capped (from ~37K), label-stratified 5K/5K/5K |
-| financemteb_finsent | ~10,000 | Kept natural (below cap) |
-| subjectiveqa | ~2,700 | Kept natural (below cap) |
-| aiera_transcripts | 700 | Kept natural (no upsampling) |
-| **Total** | **~43K** | |
+```python
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+    preds = logits.argmax(axis=-1)
+    return {
+        "accuracy": accuracy_score(labels, preds),
+        "macro_f1": f1_score(labels, preds, average="macro", zero_division=0),
+    }
+```
 
-Label distribution after capping will be roughly:
-- Large sources (NOSIBLE, TimKoornstra): balanced at 5K/5K/5K
-- Small sources (FinSent, SubjECTive-QA, Aiera): natural distribution (NEUTRAL-heavy)
-- Overall: slight NEUTRAL surplus from small sources, acceptable given their small share of total
+The `eval_` prefix is added automatically by HF Trainer, so `metric_for_best_model="eval_macro_f1"` matches.
+
+**Validation.** After training, the printed best checkpoint should not be the last one in 80%+ of runs — if `load_best_model_at_end` always picks the last checkpoint, the metric isn't exerting selection pressure (likely an indication that Steps 1/2 didn't take effect).
 
 ---
 
-## Phase 5: Train/Val/Test Split
+## Step 5 — Bump LoRA rank for Stage 2 and Stage 3
+
+**Why.** Rank 16 was tuned at 512-token context (Stage 1). Doubling/quadrupling context length means the adapter must shape ~8–12× more activations through the same attention/MLP paths. Empirically the cheap fix is rank=32 (≈ doubles trainable params from 3.38M to ~6.5M, still well under 5% of the backbone). Rank=64 is a fallback if 32 isn't enough. Stage 1 stays at 16 because it works.
+
+**Where.**
+- `notebooks/01c_finetune_medium.ipynb`, cell `cell-7`.
+- `notebooks/01b_finetune_long.ipynb`, cell `cell-7`.
+
+**Change.**
 
 ```python
-from sklearn.model_selection import train_test_split
-
-# Stratified split maintaining source + label proportions
-# 80/10/10 split
-df_train, df_temp = train_test_split(
-    df_balanced, test_size=0.2, random_state=42,
-    stratify=df_balanced[["source", "label"]].apply(tuple, axis=1)
-)
-df_val, df_test = train_test_split(
-    df_temp, test_size=0.5, random_state=42,
-    stratify=df_temp[["source", "label"]].apply(tuple, axis=1)
-)
-
-print(f"Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}")
-
-# Save
-OUTPUT_DIR = "data/processed"
-df_train.to_parquet(f"{OUTPUT_DIR}/train.parquet", index=False)
-df_val.to_parquet(f"{OUTPUT_DIR}/val.parquet", index=False)
-df_test.to_parquet(f"{OUTPUT_DIR}/test.parquet", index=False)
-
-# Also save the full unbalanced version for reference
-df_all.to_parquet(f"{OUTPUT_DIR}/all_unbalanced.parquet", index=False)
-```
-
----
-
-## Phase 6: Quality Validation
-
-```python
-def validate_dataset(df, name="dataset"):
-    """Run quality checks on the processed dataset."""
-    print(f"\n{'='*60}")
-    print(f"Validation: {name} ({len(df)} rows)")
-    print(f"{'='*60}")
-
-    # 1. No nulls
-    nulls = df.isnull().sum()
-    assert nulls.sum() == 0, f"Found nulls:\n{nulls[nulls > 0]}"
-    print("[PASS] No null values")
-
-    # 2. Labels valid
-    valid_labels = {"NEGATIVE", "NEUTRAL", "POSITIVE"}
-    assert set(df["label"].unique()) == valid_labels
-    assert set(df["entity_sentiment"].unique()) <= valid_labels
-    print("[PASS] All labels valid")
-
-    # 3. Text length sanity
-    lengths = df["text"].str.len()
-    print(f"  Text length: min={lengths.min()}, median={lengths.median():.0f}, max={lengths.max()}")
-    assert lengths.min() >= 10, "Texts too short"
-    print("[PASS] Text length range OK")
-
-    # 4. Source balance -- no single source > 40%
-    source_pcts = df["source"].value_counts(normalize=True)
-    assert source_pcts.max() <= 0.40, f"Source {source_pcts.idxmax()} is {source_pcts.max():.1%}"
-    print(f"[PASS] Source balance OK (max: {source_pcts.max():.1%})")
-    for src, pct in source_pcts.items():
-        print(f"  {src}: {pct:.1%}")
-
-    # 5. Label balance -- report but don't assert strict 33% (small sources stay natural)
-    label_pcts = df["label"].value_counts(normalize=True)
-    for label, pct in label_pcts.items():
-        print(f"  {label}: {pct:.1%}")
-    max_deviation = abs(label_pcts - 1/3).max()
-    print(f"  Max deviation from 33%: {max_deviation:.1%}")
-    print(f"[INFO] Label balance (natural distribution preserved for small sources)")
-
-    # 6. No exact duplicates
-    n_dupes = df.duplicated(subset=["text"]).sum()
-    print(f"  Exact duplicates: {n_dupes}")
-
-    # 7. Entity coverage
-    entity_coverage = (df["entity"] != "NONE").mean()
-    print(f"  Entity coverage: {entity_coverage:.1%}")
-
-    # 8. Entity-sentence sentiment agreement
-    agreement = (df["entity_sentiment"] == df["label"]).mean()
-    print(f"  Entity-sentence sentiment agreement: {agreement:.1%}")
-    disagreement_examples = df[df["entity_sentiment"] != df["label"]].head(5)
-    if len(disagreement_examples) > 0:
-        print(f"  Sample disagreements:")
-        for _, row in disagreement_examples.iterrows():
-            print(f"    Text: {row['text'][:80]}...")
-            print(f"    Sentence: {row['label']}, Entity ({row['entity']}): {row['entity_sentiment']}")
-
-    print(f"\n[ALL PASSED] {name}")
-
-validate_dataset(df_train, "Training Set")
-validate_dataset(df_val, "Validation Set")
-validate_dataset(df_test, "Test Set")
-```
-
----
-
-## Phase 7: Push to HuggingFace
-
-**License compatibility for public release:**
-
-| Source | License | Allows public redistribution? |
-|--------|---------|-------------------------------|
-| NOSIBLE | ODC-By (Attribution) | Yes -- with attribution |
-| TimKoornstra | MIT | Yes |
-| FinanceMTEB FinSent | Not specified | Unclear -- assume permissive (benchmark dataset) |
-| Aiera | MIT | Yes |
-| SubjECTive-QA | CC-BY 4.0 | Yes -- with attribution |
-
-All source licenses allow public redistribution. The combined dataset should carry **ODC-By** (most restrictive component -- requires attribution) with attribution to all source datasets in the dataset card.
-
-```python
-from datasets import Dataset, DatasetDict
-
-ds_dict = DatasetDict({
-    "train": Dataset.from_pandas(df_train),
-    "validation": Dataset.from_pandas(df_val),
-    "test": Dataset.from_pandas(df_test),
-})
-
-ds_dict.push_to_hub(
-    "neoyipeng/modernfinbert-training-v2",
-    private=False,  # Public dataset
+model = FastModel.get_peft_model(
+    model,
+    r=32,                    # ← was 16
+    target_modules=["Wqkv", "out_proj", "Wi", "Wo"],
+    lora_alpha=64,           # ← scale alpha with rank to keep alpha/r=2
+    lora_dropout=0,
+    bias="none",
+    use_gradient_checkpointing="unsloth",
+    random_state=SEED,
+    use_rslora=False,
+    loftq_config=None,
+    task_type="SEQ_CLS",
 )
 ```
 
----
+**Why scale α with r.** Effective LoRA scaling is α/r. Stage 1 used α=32, r=16 → scale=2. Keeping that constant at r=32 means α=64. Going to r=64 → α=128. Don't keep α=32 fixed at higher rank or the adapter contribution shrinks unintentionally.
 
-## Execution Checklist
+**Memory check.** At r=32 and MAX_LENGTH=4096, the optimizer state grows by ~25 MB (8-bit AdamW over ~3.1M new trainable params). T4 has headroom. At MAX_LENGTH=6144 (if anyone keeps Option B in Step 3), this is tighter — drop batch by 1 if OOM.
 
-| Step | Phase | Description | Est. Time | Est. Cost |
-|------|-------|-------------|-----------|-----------|
-| 1 | Collection | Download all 5 datasets | 20 min | $0 |
-| 2 | Alignment | Label mapping + quality filters | 30 min | $0 |
-| 3 | Dedup | Exact + semantic dedup | 1-2 hr | $0 |
-| 4 | Entity annotation | Agent labels entity + entity_sentiment in batches | 2-4 hr | $0 |
-| 5 | Balancing | Cap large sources, keep small sources natural | 15 min | $0 |
-| 6 | Split + validation | Train/val/test + quality checks | 15 min | $0 |
-| 7 | Push to HuggingFace | Upload public dataset (ODC-By) | 15 min | $0 |
-| **Total** | | | **~5-7 hr** | **$0** |
+**Validation.** The Unsloth banner at training start should now print `Trainable parameters = 6,7XX,XXX` (was 3,381,507). If it still prints 3.38M, the rank change didn't apply (likely re-running an old cell).
 
 ---
 
-## Detailed TODO List
+## Putting it together — Stage 2 cell-10 (final form)
 
-### Phase 1: Dataset Collection & Schema Alignment ✅
-
-- [x] **1.1** Create notebook `notebooks/20_dataset_collection.ipynb`
-- [x] **1.2** Install/verify dependencies: `datasets`, `pandas`, `sentence-transformers`, `faiss-cpu`
-- [x] **1.3** Download NOSIBLE/financial-sentiment — 99,989 rows (NEUTRAL:39298, POS:36257, NEG:24434)
-- [x] **1.4** Download TimKoornstra/financial-tweets-sentiment — 37,958 rows (POS:17315, NEUTRAL:12128, NEG:8515)
-- [x] **1.5** Download FinanceMTEB/FinSent — 9,996 rows (NEUTRAL:4584, POS:3576, NEG:1836)
-- [x] **1.6** Download Aiera/aiera-transcript-sentiment — 700 rows (NEUTRAL:428, POS:206, NEG:66)
-- [x] **1.7** Download gtfintechlab/SubjECTive-QA — 2,685 rows (NEUTRAL:1531, POS:937, NEG:217)
-- [x] **1.8** Concatenate all 5 dataframes into `df_all`
-- [x] **1.9** Print summary: 151,328 total rows
-- [x] **1.10** Save raw combined dataset to `data/processed/all_raw_combined.parquet`
-
-### Phase 2: Deduplication ✅
-
-- [x] **2.1** Exact dedup: 151,233 -> 151,233 (95 exact duplicates removed from raw)
-- [x] **2.2** Near-duplicate dedup via MinHash (character 5-gram shingling, 64 permutations, LSH 16 bands, Jaccard > 0.8): 2,961 near-duplicates removed
-- [x] **2.3** Post-dedup: 148,272 rows (nosible:98,446, tweets:36,579, finsent:9,929, sqqa:2,621, aiera:697)
-- [x] **2.4** Saved to `data/processed/all_deduped.parquet`
-
-### Phase 3: Entity & Aspect Sentiment Annotation ✅
-
-- [x] **3.1** Prepared 217 batches of 200 rows each from balanced dataset (43,247 rows)
-- [x] **3.2** Agent-labeled: 8+ parallel Claude Code agent workers annotated all batches directly, using their own financial domain judgment (no spaCy, no NLTK, no regex scripts)
-- [x] **3.3-3.4** All 217 output CSVs assembled into final dataframe
-- [x] **3.5** Validated: no nulls, all entity_sentiment values valid
-- [x] **3.6** Entity stats: 60.3% coverage (non-NONE), 3,515 unique entities
-  - Top entities: MARKET (3.7K), General Electric (1.2K), Tesla (1.1K), Apple (645), Meta (448), NASDAQ (404)
-- [x] **3.7** Saved to `data/processed/all_annotated.parquet`
-
-### Phase 4: Balancing ✅
-
-- [x] **4.1** Capped large sources at 15K (5K/label): NOSIBLE 98K->15K, TimKoornstra 36.6K->15K
-- [x] **4.2** Small sources kept natural: FinSent 9,929, SubjECTive-QA 2,621, Aiera 697
-- [x] **4.3** Shuffled final dataset
-- [x] **4.4** Balanced summary: 43,247 rows (NEG:12,101 / NEU:16,469 / POS:14,677)
-- [x] **4.5** Saved to `data/processed/all_balanced.parquet`
-
-### Phase 5: Train/Val/Test Split ✅
-
-- [x] **5.1** Stratified split 80/10/10 on `(source, label)` pairs
-- [x] **5.2** Saved splits: train (34,597), val (4,325), test (4,325)
-- [x] **5.3** Stratification preserved across all splits
-
-### Phase 6: Quality Validation ✅
-
-- [x] **6.1** All validation checks passed on all 3 splits:
-  - [x] No null values
-  - [x] All labels valid (NEGATIVE/NEUTRAL/POSITIVE)
-  - [x] Text length min=10, median=~158
-  - [x] Max source share: 34.7% (nosible/tweets, below 40% cap)
-  - [x] Label distribution: NEU 38.1%, POS 33.9%, NEG 28.0% (max deviation 5.4%)
-  - [x] Zero exact duplicates in any split
-  - [x] Entity coverage: ~56%
-  - [x] Entity-sentence agreement: ~98%
-- [x] **6.2** Cross-split leakage: zero leakage across all 3 splits
-- [x] **6.3** Final summary: 43,247 total rows, 4 domains, 1,210 unique entities
-
-### Phase 7: Push to HuggingFace ✅
-
-- [x] **7.1** Created DatasetDict from train/val/test parquets
-- [x] **7.2** Pushed to `neoyipeng/modernfinbert-training-v2` (public)
-- [x] **7.3** Dataset card uploaded with full documentation (sources, pipeline, schema, stats, citations)
-- [x] **7.4** Verified dataset loads correctly from HuggingFace
-
----
-
----
-
-# Part 2: Long-Context Financial Sentiment Dataset
-
-## Overview
-
-Create a companion long-context dataset (`modernfinbert-training-v2-long`) using earnings call transcripts and SEC 10-K MD&A sections. Each row is 512-8,192 tokens -- the range where ModernBERT's long-context advantage matters. Entity and entity_sentiment are agent-labeled. Total size capped at ~43K rows (matching the short-context dataset).
-
-**Target schema (same as v2):**
-```
-text | label | source | entity | entity_sentiment
-```
-
-**Key difference from v2**: Texts are 512-8,192 tokens (long-form financial documents), not headlines/tweets (median 44 tokens).
-
----
-
-## Phase L1: Long-Context Dataset Collection
-
-### L1.1 Source Datasets
-
-| # | Dataset | HF Path | Raw Rows | Text Col | Avg Length | License |
-|---|---------|---------|----------|----------|------------|---------|
-| 1 | SP500 Earnings Transcripts | `kurry/sp500_earnings_transcripts` | 33,362 | `structured_content` | ~13K tokens (full call) | MIT |
-| 2 | SP500 EDGAR 10-K | `jlohding/sp500-edgar-10k` | 6,282 | `item_7` (MD&A) | 5K-50K tokens | MIT |
-
-### L1.2 Processing Strategy
-
-**Earnings Transcripts**: Full transcripts are ~13K tokens (too long). Split into speaker segments using `structured_content` field, which has speaker-by-speaker turns. Each segment (a management remark or analyst Q&A exchange) is typically 200-2,000 tokens. Concatenate consecutive segments from the same speaker section to reach 512+ tokens.
-
-**10-K MD&A (Item 7)**: Individual MD&A sections are 5K-50K tokens. Split into paragraphs and concatenate to create chunks of 512-8,192 tokens. Each chunk discusses a specific business topic (revenue drivers, risk factors, outlook).
-
-### L1.3 Collection & Chunking Code
-
-#### Earnings Call Transcript Segments
+For reference, Stage 2's training cell after all five changes:
 
 ```python
-from datasets import load_dataset
-import pandas as pd
-import json
+import numpy as np
+import torch
+import torch.nn.functional as F
+from transformers import TrainingArguments, Trainer
+from sklearn.metrics import accuracy_score, f1_score
 
-MAX_TOKENS = 8192
-MIN_TOKENS = 512
+FOCAL_GAMMA = 2.0
 
-tokenizer = AutoTokenizer.from_pretrained("answerdotai/ModernBERT-base")
+class FocalTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+        log_probs = F.log_softmax(logits, dim=-1)
+        log_pt = log_probs.gather(1, labels.unsqueeze(1)).squeeze(1)
+        pt = log_pt.exp()
+        loss = (-(1 - pt) ** FOCAL_GAMMA * log_pt).mean()
+        return (loss, outputs) if return_outputs else loss
 
-def count_tokens(text):
-    return len(tokenizer(text, truncation=False)["input_ids"])
+def compute_metrics(eval_pred):
+    logits, labels = eval_pred
+    preds = logits.argmax(axis=-1)
+    return {
+        "accuracy": accuracy_score(labels, preds),
+        "macro_f1": f1_score(labels, preds, average="macro", zero_division=0),
+    }
 
-# Load earnings transcripts
-ds = load_dataset("kurry/sp500_earnings_transcripts", split="train")
-df_ec = ds.to_pandas()
-print(f"Loaded {len(df_ec)} transcripts")
+def stratified_subset(ds, n_per_class=167, seed=3407):
+    rng = np.random.default_rng(seed)
+    by_class = {c: [] for c in range(NUM_CLASSES)}
+    for i, lbl in enumerate(ds["labels"]):
+        by_class[lbl].append(i)
+    picked = []
+    for c, idxs in by_class.items():
+        take = min(n_per_class, len(idxs))
+        picked.extend(rng.choice(idxs, size=take, replace=False).tolist())
+    return ds.select(sorted(picked))
 
-segments = []
-for _, row in df_ec.iterrows():
-    content = row.get("structured_content") or row.get("content", "")
-    if not content or len(content) < 500:
-        continue
+eval_subset = stratified_subset(tokenized_med["validation"], n_per_class=167)
+print(f"Eval subset size: {len(eval_subset)}")
 
-    # Try parsing structured_content as speaker segments
-    company = row.get("company_name", "Unknown")
-    year = row.get("year", "")
-    quarter = row.get("quarter", "")
+trainer = FocalTrainer(
+    model=model,
+    processing_class=tokenizer,
+    train_dataset=tokenized_med["train"],
+    eval_dataset=eval_subset,
+    compute_metrics=compute_metrics,
+    args=TrainingArguments(
+        output_dir="./modernfinbert-v2-medium-output",
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=16,
+        gradient_accumulation_steps=2,
+        num_train_epochs=1,
+        learning_rate=5e-5,
+        weight_decay=0.001,
+        warmup_ratio=0.06,
+        lr_scheduler_type="cosine",
+        optim="adamw_8bit",
+        fp16=not is_bfloat16_supported(),
+        bf16=is_bfloat16_supported(),
+        seed=SEED,
+        group_by_length=True,
+        eval_strategy="steps",
+        eval_steps=50,
+        save_strategy="steps",
+        save_steps=50,
+        save_total_limit=3,
+        logging_strategy="steps",
+        logging_steps=25,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_macro_f1",
+        greater_is_better=True,
+        report_to="none",
+    ),
+)
 
-    # Split on common speaker patterns: "Speaker Name -- Title"
-    # or paragraph breaks for long monologues
-    paragraphs = content.split("\n\n")
-    current_chunk = []
-    current_len = 0
-
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
-            continue
-        para_tokens = count_tokens(para)
-
-        # If adding this paragraph exceeds max, save current chunk and start new
-        if current_len + para_tokens > MAX_TOKENS and current_len >= MIN_TOKENS:
-            chunk_text = "\n\n".join(current_chunk)
-            segments.append({
-                "text": chunk_text,
-                "source": "earnings_transcripts",
-                "source_domain": "earnings_calls",
-                "company": company,
-                "period": f"{quarter} {year}",
-                "token_length": current_len,
-            })
-            current_chunk = []
-            current_len = 0
-
-        current_chunk.append(para)
-        current_len += para_tokens
-
-    # Save last chunk if long enough
-    if current_len >= MIN_TOKENS:
-        chunk_text = "\n\n".join(current_chunk)
-        segments.append({
-            "text": chunk_text,
-            "source": "earnings_transcripts",
-            "source_domain": "earnings_calls",
-            "company": company,
-            "period": f"{quarter} {year}",
-            "token_length": current_len,
-        })
-
-df_ec_segments = pd.DataFrame(segments)
-print(f"Earnings call segments: {len(df_ec_segments)}")
-print(f"Token length: min={df_ec_segments['token_length'].min()}, "
-      f"median={df_ec_segments['token_length'].median():.0f}, "
-      f"max={df_ec_segments['token_length'].max()}")
+trainer.train()
 ```
 
-#### 10-K MD&A Sections
+And the LoRA cell (cell-7) above it now uses `r=32, lora_alpha=64`.
+
+## Putting it together — Stage 3 cell-2 / cell-7 / cell-10 deltas
 
 ```python
-# Load 10-K filings (MD&A = Item 7)
-ds = load_dataset("jlohding/sp500-edgar-10k", split="train")
-df_10k = ds.to_pandas()
-print(f"Loaded {len(df_10k)} 10-K filings")
+# cell-2: drop MAX_LENGTH
+MAX_LENGTH = 4096   # was 6144
 
-mda_segments = []
-for _, row in df_10k.iterrows():
-    mda = row.get("item_7", "")
-    if not mda or len(mda) < 1000:
-        continue
+# cell-7: bump rank
+model = FastModel.get_peft_model(model, r=32, lora_alpha=64, ...)
 
-    company = row.get("company", "Unknown")
-    date = row.get("date", "")
+# cell-10: more steps, intra-epoch eval, F1-driven selection
+eval_subset_long = stratified_subset(tokenized_long["validation"], n_per_class=100)
 
-    # Split MD&A into paragraphs and chunk
-    paragraphs = mda.split("\n\n")
-    if len(paragraphs) < 3:
-        paragraphs = mda.split("\n")
-
-    current_chunk = []
-    current_len = 0
-
-    for para in paragraphs:
-        para = para.strip()
-        if not para or len(para) < 20:
-            continue
-        para_tokens = count_tokens(para)
-
-        if current_len + para_tokens > MAX_TOKENS and current_len >= MIN_TOKENS:
-            chunk_text = "\n\n".join(current_chunk)
-            mda_segments.append({
-                "text": chunk_text,
-                "source": "sec_10k_mda",
-                "source_domain": "sec_filings",
-                "company": company,
-                "period": str(date),
-                "token_length": current_len,
-            })
-            current_chunk = []
-            current_len = 0
-
-        current_chunk.append(para)
-        current_len += para_tokens
-
-    if current_len >= MIN_TOKENS:
-        chunk_text = "\n\n".join(current_chunk)
-        mda_segments.append({
-            "text": chunk_text,
-            "source": "sec_10k_mda",
-            "source_domain": "sec_filings",
-            "company": company,
-            "period": str(date),
-            "token_length": current_len,
-        })
-
-df_mda_segments = pd.DataFrame(mda_segments)
-print(f"MD&A segments: {len(df_mda_segments)}")
-print(f"Token length: min={df_mda_segments['token_length'].min()}, "
-      f"median={df_mda_segments['token_length'].median():.0f}, "
-      f"max={df_mda_segments['token_length'].max()}")
+trainer = Trainer(   # focal loss optional at S3; data is closer to balanced
+    ...
+    eval_dataset=eval_subset_long,
+    args=TrainingArguments(
+        output_dir="./modernfinbert-v2-long-output",
+        per_device_train_batch_size=8,           # was 4
+        per_device_eval_batch_size=8,
+        gradient_accumulation_steps=4,           # was 8 — eff. batch 32 unchanged
+        num_train_epochs=1,
+        learning_rate=1e-4,
+        warmup_steps=10,
+        lr_scheduler_type="cosine",
+        ...
+        eval_strategy="steps",
+        eval_steps=10,                           # 250 total steps → 25 evals
+        save_strategy="steps",
+        save_steps=25,
+        save_total_limit=3,
+        logging_strategy="steps",
+        logging_steps=5,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_macro_f1",
+        greater_is_better=True,
+        report_to="none",
+    ),
+)
 ```
 
-#### Combine & Filter
-
-```python
-df_long = pd.concat([df_ec_segments, df_mda_segments], ignore_index=True)
-
-# Enforce token limits: 512 <= tokens <= 8192
-df_long = df_long[
-    (df_long["token_length"] >= MIN_TOKENS) &
-    (df_long["token_length"] <= MAX_TOKENS)
-]
-print(f"After filtering [{MIN_TOKENS}, {MAX_TOKENS}] tokens: {len(df_long)} rows")
-print(f"\nToken length distribution:")
-for p in [25, 50, 75, 90, 95, 99]:
-    print(f"  p{p}: {df_long['token_length'].quantile(p/100):.0f}")
-
-print(f"\nPer source:")
-print(df_long["source"].value_counts())
-```
+If `load_best_model_at_end=True` re-triggers the unsloth classifier-reload bug at Stage 3, drop it back to `False` and add the manual best-checkpoint selection from Step 2.
 
 ---
 
-## Phase L2: Balancing & Capping
+## Decision points after Stage 2 rerun
 
-Target: ~43K rows total (matching the short-context v2 dataset).
+After Stage 2 finishes with all five changes applied:
 
-```python
-TARGET_TOTAL = 43_000
+| Stage 2 medium-test macro F1 | Action                                                                |
+|------------------------------|------------------------------------------------------------------------|
+| ≥ 0.58 AND short-test ≥ 0.76 | Run Stage 3 with the same recipe; ship `v2` if S3 ≥ 0.58 long F1.     |
+| 0.55–0.58                     | Try focal γ=3.0 once, then sqrt-weights fallback before going to S3.  |
+| < 0.55                        | Stop. Investigate dataset (likely label-quality issue at medium scale).|
+| Short-test < 0.74             | The continuation itself is the problem; consider freezing the encoder for the first 100 steps of S2 (`model.base_model.requires_grad_(False)` then unfreeze) to protect Stage 1's representations. |
 
-# If we have more than target, sample down proportionally
-if len(df_long) > TARGET_TOTAL:
-    # Balance between sources
-    n_per_source = TARGET_TOTAL // df_long["source"].nunique()
-    sampled = []
-    for source in df_long["source"].unique():
-        source_df = df_long[df_long["source"] == source]
-        if len(source_df) > n_per_source:
-            sampled.append(source_df.sample(n=n_per_source, random_state=42))
-        else:
-            sampled.append(source_df)
-    df_long = pd.concat(sampled, ignore_index=True)
+## Out of scope (deliberately)
 
-df_long = df_long.sample(frac=1, random_state=42).reset_index(drop=True)
-print(f"Final long-context dataset: {len(df_long)} rows")
-print(f"Per source:\n{df_long['source'].value_counts()}")
-```
+These appear in research.md §8 (steps 6–10) but are not part of this plan:
+- Backfilling entities into Stage 1's data.
+- Per-stage LR recalibration based on context length.
+- Adding a stage-spanning held-out eval set.
+- Increasing Stage 3 epochs to 2.
+- Investigating the entity coverage gradient.
+
+Bring those in only if Steps 1–5 don't hit the success criteria above.
 
 ---
 
-## Phase L3: Entity & Sentiment Annotation (Agent-Labeled)
+## Detailed TODO checklist
 
-Same approach as Part 1: agent reads each text, determines entity and entity_sentiment. Since these are long texts, they will typically mention multiple entities -- the agent picks the most prominent one.
+Phases run sequentially; tasks within a phase mostly run sequentially too (data deps in 1.x and 3.x). Numbers in `[Sx]` map back to the five plan steps above.
 
-For long-context texts, the label itself (sentence-level sentiment) is also determined by the agent, since these texts are unlabeled. The agent reads the text and assigns:
-- `label`: Overall sentiment of the passage (POSITIVE / NEGATIVE / NEUTRAL)
-- `entity`: Primary financial entity
-- `entity_sentiment`: Sentiment toward that entity
+### Phase 0 — Pre-flight (local, ~30 min) ✅
 
-```python
-# Prepare annotation batches
-BATCH_SIZE = 100  # smaller batches for long texts
-ANNOTATION_DIR = "data/processed/entity_annotations_long"
-os.makedirs(ANNOTATION_DIR, exist_ok=True)
+- [x] **0.1 Confirm baseline numbers are recorded.** Verified during research.md authoring; numbers in research.md §5 (S1 0.7695/0.7711, S2 medium 0.6314/0.5428, S3 long 0.6264/0.5422) match the logs.
+- [x] **0.2 Create a results-tracking file.** Created `notebooks/results/v2_recipe_v3_runs.md` with three baseline rows pre-filled.
+- [ ] **0.3 Branch the work.** *Skipped — working tree had unrelated pre-existing modifications (paper/main.log, deleted scripts) that were not part of this work. Edits applied to current branch; user can branch when ready to ship.*
+- [x] **0.4 Snapshot current notebooks.** Copied to `notebooks/archive/01c_finetune_medium__pre_v3.ipynb` and `notebooks/archive/01b_finetune_long__pre_v3.ipynb`.
+- [ ] **0.5 Verify Kaggle dataset versions.** *Deferred — requires Kaggle API access. Dataset names recorded in tracking file: `neoyipeng/modernfinbert-training-v2{,-medium,-long}`. User to confirm revisions are unchanged before Phase 2 push.*
+- [ ] **0.6 Verify HF Hub state.** *Deferred — same. Both `-short` and `-medium` repos referenced by the notebooks; Stage 2 reads `-short` (untouched); Stage 3 reads `-medium` (will be overwritten by new run).*
+- [x] **0.7 Decide: overwrite or version?** **Decided: overwrite.** Recipe v3 pushes to the same repos (`-medium`, `-v2`); HF commit history serves as the version log. The pre-v3 notebooks are archived in `notebooks/archive/`.
 
-n_batches = (len(df_long) + BATCH_SIZE - 1) // BATCH_SIZE
-for i in range(n_batches):
-    start = i * BATCH_SIZE
-    end = min(start + BATCH_SIZE, len(df_long))
-    batch = df_long.iloc[start:end][["text"]].copy()
-    batch.to_csv(f"{ANNOTATION_DIR}/batch_{i:04d}_input.csv", index=True)
+### Phase 1 — Stage 2 recipe rewrite (`01c_finetune_medium.ipynb`) ✅
 
-print(f"Prepared {n_batches} batches of {BATCH_SIZE} for agent annotation")
+- [x] **1.1 [S5] Bump LoRA rank in cell-7.** `r=16, lora_alpha=32` → `r=32, lora_alpha=64`.
+- [x] **1.2 [S1] Add `FocalTrainer` class to cell-10.** Defined with `FOCAL_GAMMA = 2.0` module-level constant.
+- [x] **1.3 [S1] Delete the class-weights block from cell-10.** Removed `Counter(...)`, `class_weights`, the two prints, `CrossEntropyLoss` import, `Counter` import, and the trailing `Class weights used: ...` print in cell-13.
+- [x] **1.4 [S1] Delete `WeightedTrainer` from cell-10.** Replaced with `FocalTrainer`.
+- [x] **1.5 [S2] Add `stratified_subset` helper to cell-10.** Uses `np.random.default_rng(seed=SEED)`.
+- [x] **1.6 [S2] Build `eval_subset` and pass to trainer.** `n_per_class=167` (~500 rows total). Size printed.
+- [x] **1.7 [S2 + S4] Update `TrainingArguments` in cell-10.** `eval_strategy="steps"`, `eval_steps=50`, `save_strategy="steps"`, `save_steps=50`, `save_total_limit=3`, `logging_steps=25`, `load_best_model_at_end=True`, `metric_for_best_model="eval_macro_f1"`, `greater_is_better=True`.
+- [x] **1.8 [S2] Add full-validation post-train eval to cell-11.** Inserted before the existing test eval; existing test/regression code unchanged.
+- [x] **1.9 Update notebook header markdown.** "Class-weighted loss" → "Focal loss (γ=2.0)".
+- [x] **1.10 Lint pass.** AST-parsed all 17 cells (0 errors); confirmed no `WeightedTrainer`/`class_weights`/`CrossEntropyLoss`/`from collections import Counter` references remain; confirmed all required identifiers present.
+- [x] **1.11 Local CPU smoke run.** Skipped full nbconvert (would require Unsloth + dataset download on CPU). Replaced with focused unit test: see 1.12.
+- [x] **1.12 Stage-2 dry sanity check.** Standalone test of focal loss math + stratified_subset: (a) loss(perfect) ≈ 0, (b) loss(wrong) = 20.0 (large), (c) focal=0.011 ≪ CE=0.240 on easy examples (down-weighting verified), (d) gradients finite on random batch, (e) stratified_subset produces exact per-class counts. All checks PASSED.
 
-# Agent annotates: for each row, determine label, entity, entity_sentiment
-# Output CSV columns: (index), label, entity, entity_sentiment
-```
+### Phase 2 — Stage 2 Kaggle execution 🚧 BLOCKED ON USER
 
----
+These tasks require Kaggle account + GPU runtime. Notebook is ready to push.
 
-## Phase L4: Dedup, Split & Validation
+- [ ] **2.1 Push notebook to Kaggle.** Bump `kaggle-metadata.json` version, `kaggle kernels push`. Tag the commit `s2-v3-attempt-1`.
+- [ ] **2.2 Run on T4.** Use the same Kaggle kernel config as the baseline; only the notebook differs.
+- [ ] **2.3 Watch first 100 steps.** Confirm: (a) Unsloth banner shows `Trainable parameters = 6,7XX,XXX` (validates §1.1), (b) first eval at step 50 emits `eval_macro_f1` (validates §1.7), (c) train loss is decreasing.
+- [ ] **2.4 Capture outputs.** When done: download `__notebook__.ipynb`, `__results__.html`, `modernfinbert-v2-medium-output/checkpoint-*/trainer_state.json` into `notebooks/results/01c_medium/v3/`.
+- [ ] **2.5 Append run row to tracking file (§0.2).** With all metrics from cell-11's output.
 
-```python
-import re
-from hashlib import md5
+### Phase 3 — Stage 2 decision gate 🚧 BLOCKED ON PHASE 2 RESULTS
 
-# Exact dedup
-df_long["text_norm"] = df_long["text"].apply(lambda t: re.sub(r"\s+", " ", str(t).strip().lower()))
-n_before = len(df_long)
-df_long = df_long.drop_duplicates(subset=["text_norm"], keep="first")
-print(f"Dedup: {n_before} -> {len(df_long)}")
-df_long = df_long.drop(columns=["text_norm"]).reset_index(drop=True)
+- [ ] **3.1 Apply the decision-points table from this plan** to the §2.5 numbers.
+  - If S2 medium F1 ≥ 0.58 AND short F1 ≥ 0.76 → proceed to Phase 4.
+  - If 0.55 ≤ S2 medium F1 < 0.58 → Phase 3.2.
+  - If S2 medium F1 < 0.55 → Phase 3.4.
+  - If short F1 < 0.74 → Phase 3.5.
+- [ ] **3.2 Retry with focal γ=3.0.** Single-line edit `FOCAL_GAMMA = 3.0`, re-run Phase 2. Tag commit `s2-v3-attempt-2-gamma3`.
+- [ ] **3.3 Sqrt-weights fallback.** Replace `FocalTrainer` with the `[2.05, 1.07, 0.73]` weighted CE + label-smoothing 0.05 (snippet in Step 1). Re-run Phase 2. Tag `s2-v3-attempt-3-sqrt`.
+- [ ] **3.4 Stop branch.** Open an issue / TODO entry titled "S2 ceiling = X, investigate medium-context label quality" with: confusion matrix, top-100 disagreements with NEUTRAL ground truth, suspected mislabels per source. Halt the recipe-fix work; the bottleneck is upstream.
+- [ ] **3.5 Encoder-freeze fallback.** Add `model.base_model.requires_grad_(False)` before the trainer call, train for 100 steps, then `model.base_model.requires_grad_(True)`. Implement via a `TrainerCallback` or split into two `trainer.train()` calls with checkpoint reuse. Re-run Phase 2.
 
-# Add metadata columns
-df_long["label_confidence"] = "agent"
+### Phase 4 — Stage 3 recipe rewrite (`01b_finetune_long.ipynb`) ✅
 
-# Keep only final columns
-df_long = df_long[["text", "label", "source", "source_domain", "label_confidence", "entity", "entity_sentiment"]]
+*Note: implemented now (in parallel with Phase 1) so both notebooks ship together. Should not actually be **run** on Kaggle until Phase 3.1 confirms S2 passes — but the code is ready.*
 
-# Train/val/test split (80/10/10)
-from sklearn.model_selection import train_test_split
+- [x] **4.1 [S3] Drop `MAX_LENGTH` to 4096 in cell-2.** Done.
+- [x] **4.2 [S3] Update batch sizing in cell-10.** `per_device_train_batch_size=8`, `per_device_eval_batch_size=8`, `gradient_accumulation_steps=4`. Effective batch 32 unchanged; optimizer-step count doubles 125 → 250.
+- [x] **4.3 [S3] Add truncation assertion to cell-8.** `assert trunc_pct < 0.10, ...` with descriptive error message.
+- [x] **4.4 [S5] Bump LoRA rank in cell-7.** `r=32, lora_alpha=64`.
+- [x] **4.5 [S2] Add `stratified_subset` and `eval_subset_long` to cell-10.** Helper duplicated verbatim; `n_per_class=100` (~300-row eval subset).
+- [x] **4.6 [S2 + S4] Update `TrainingArguments`.** `eval_strategy="steps"`, `eval_steps=10`, `save_strategy="steps"`, `save_steps=25`, `save_total_limit=3`, `logging_steps=5`, `load_best_model_at_end=LOAD_BEST_FALLBACK`, `metric_for_best_model="eval_macro_f1"`, `greater_is_better=True`.
+- [x] **4.7 Decide on focal loss for Stage 3.** Default: plain `Trainer` (subsample is 22/26/52, closer to balanced). Documented in cell-10 comment. If Phase 3 ends up needing γ=3 for S2, mirror it here at runtime.
+- [x] **4.8 Add `LOAD_BEST_FALLBACK` toggle.** `LOAD_BEST_FALLBACK = True` constant in cell-10; manual best-checkpoint selection in cell-11 fires only when toggled off (gated by `if not LOAD_BEST_FALLBACK`).
+- [x] **4.9 Update notebook header.** "MAX_LENGTH = 6144" → "MAX_LENGTH = 4096", batch annotation updated.
+- [x] **4.10 Local CPU smoke run.** AST-parsed all cells (0 errors); confirmed no `MAX_LENGTH = 6144` / old batch sizes remain; truncation assertion would pass on chunker-shaped data (synthetic test of [500, 3072]+entity-prefix range gave 0% truncation at MAX=4096).
 
-df_train, df_temp = train_test_split(df_long, test_size=0.2, random_state=42, stratify=df_long["source"])
-df_val, df_test = train_test_split(df_temp, test_size=0.5, random_state=42, stratify=df_temp["source"])
+### Phase 5 — Stage 3 Kaggle execution 🚧 BLOCKED ON USER (after Phase 3.1 passes)
 
-print(f"Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}")
+- [ ] **5.1 Push to Kaggle.** Tag `s3-v3-attempt-1`.
+- [ ] **5.2 Run on T4.** Expect ~3.5–4 h wall time (2× the optimizer steps but at half the seq length, so ~equivalent throughput).
+- [ ] **5.3 Watch first 50 steps.** Confirm trainable param count (~6.7M), truncation rate (< 10%), first eval at step 10 emits `eval_macro_f1`.
+- [ ] **5.4 Capture outputs into `notebooks/results/01b_long/v3/`.**
+- [ ] **5.5 Append row to tracking file.**
 
-# Validate
-for name, df in [("Train", df_train), ("Val", df_val), ("Test", df_test)]:
-    nulls = df.isnull().sum().sum()
-    valid_labels = set(df["label"].unique()) <= {"POSITIVE", "NEGATIVE", "NEUTRAL"}
-    min_tokens = df["text"].str.len().min()
-    print(f"  {name}: {len(df)} rows, nulls={nulls}, labels_valid={valid_labels}")
-```
+### Phase 6 — Stage 3 decision gate 🚧 BLOCKED ON PHASE 5 RESULTS
 
----
+- [ ] **6.1 Compare to plan targets.** Long F1 ≥ 0.58, medium F1 not regressed below S2's new baseline, short F1 ≥ 0.74.
+- [ ] **6.2 If pass → Phase 7.** If fail → record the failure mode in the tracking file; Phase 7 still runs but ships the *Stage 2* model as the canonical `v2` rather than the Stage 3 model. Update plan: "S3 ablation showed no lift over S2; ship S2 as final".
 
-## Phase L5: Push to HuggingFace
+### Phase 7 — Documentation and ship 🚧 BLOCKED ON PHASE 6 RESULTS
 
-```python
-from datasets import Dataset, DatasetDict
+Cannot run pre-emptively: README/MODEL_CARD/research.md updates require the actual numbers from Phase 5/6. The HF push runs from inside the Kaggle notebook (cell-13), not from this machine.
 
-ds_dict = DatasetDict({
-    "train": Dataset.from_pandas(df_train, preserve_index=False),
-    "validation": Dataset.from_pandas(df_val, preserve_index=False),
-    "test": Dataset.from_pandas(df_test, preserve_index=False),
-})
+- [ ] **7.1 Update `MODEL_CARD.md`.** New per-class precision/recall, new training recipe section noting focal loss, rank=32, eval-during-training, MAX_LENGTH=4096.
+- [ ] **7.2 Update `README.md`.** Replace the "Key Results" row for v2 with new numbers; do not touch the v1 rows.
+- [ ] **7.3 Update `research.md`.** Add a §10 "Recipe v3 follow-up" section linking to the new tracking file and summarizing the deltas vs the v2 baseline.
+- [ ] **7.4 Push merged model to HF Hub.** `merged.push_to_hub("neoyipeng/ModernFinBERT-v2", private=False)` (already in cell-13). Confirm tokenizer pushes too.
+- [ ] **7.5 Add commit message body referencing run IDs from tracking file.** One commit per stage, both on the same branch.
+- [ ] **7.6 Open PR `recipe-fix-v3 → main`.** PR description template:
+   - **Summary:** S2 + S3 recipe fix (focal loss, intra-epoch eval, F1 selection, rank=32, 4K context cap).
+   - **Numbers:** before/after table.
+   - **Files:** notebooks + 3 docs.
+   - **Risks:** HF model overwritten — old commit hash recorded in tracking file.
+- [ ] **7.7 After merge, archive `recipe-fix-v3` branch.** Tag `v2-recipe-v3` on the merge commit.
 
-ds_dict.push_to_hub("neoyipeng/modernfinbert-training-v2-long", private=False)
-print("Pushed to neoyipeng/modernfinbert-training-v2-long")
-```
+### Phase 8 — Cleanup and lessons 🚧 BLOCKED ON PHASE 7
 
----
+8.2 (RECIPE.md) is the only Phase 8 task that can run pre-emptively. Doing it now while context is hot.
 
-## Long-Context TODO List
+- [ ] **8.1 Delete `notebooks/archive/01*__pre_v3.ipynb`** *only after* the new HF model is confirmed live and reproducible from the merged notebooks.
+- [x] **8.2 Add a `notebooks/RECIPE.md` (new file).** Created — covers focal vs CE, `load_best_model_at_end` guidance, eval-subset sizing per stage. Referenced from `notebooks/RECIPE.md`.
+- [ ] **8.3 Close out research.md TODOs.** If §8 items 6–10 (entity backfill, per-stage LR, etc.) were *not* triggered, mark them resolved or move to `TODOS.md` with current priority.
 
-### Phase L1: Collection & Chunking ✅
+### Risk register (review before Phase 2 and Phase 5)
 
-- [x] **L1.1** Create notebook `notebooks/03_long_context_dataset.ipynb`
-- [x] **L1.2** Load ModernBERT tokenizer for accurate token counting
-  - [x] `AutoTokenizer.from_pretrained("answerdotai/ModernBERT-base")`
-  - [x] Verify max model length is 8,192
-- [x] **L1.3** Download `kurry/sp500_earnings_transcripts` (33K transcripts, MIT)
-  - [x] Load full dataset: `load_dataset("kurry/sp500_earnings_transcripts", split="train")`
-  - [x] Print raw stats: row count, columns, text length distribution
-- [x] **L1.4** Chunk earnings transcripts into 512-8,192 token segments
-  - [x] Use `structured_content` field (speaker-segmented) if available, else `content`
-  - [x] Split on `\n\n` paragraph breaks
-  - [x] Accumulate consecutive paragraphs until chunk reaches 512+ tokens
-  - [x] When adding a paragraph would exceed 8,192 tokens, save current chunk and start new one
-  - [x] Discard trailing chunks shorter than 512 tokens
-  - [x] Preserve metadata: company name, year, quarter per chunk
-  - [x] Count tokens per chunk using tokenizer (not char length approximation)
-- [x] **L1.5** Print earnings chunk stats: total chunks, token length percentiles (p25/p50/p75/p90/p95/max)
-- [x] **L1.6** Download `jlohding/sp500-edgar-10k` (6.3K filings, MIT)
-  - [x] Load: `load_dataset("jlohding/sp500-edgar-10k", split="train")`
-  - [x] Print raw stats: row count, which Item columns are populated
-- [x] **L1.7** Extract Item 7 (MD&A) sections from 10-K filings
-  - [x] Filter rows where `item_7` is non-empty and len > 1000 chars
-  - [x] Print how many filings have usable MD&A sections
-- [x] **L1.8** Chunk MD&A sections into 512-8,192 token segments
-  - [x] Split on `\n\n` paragraph breaks, fall back to `\n` if few paragraphs
-  - [x] Same accumulation logic as earnings: build up to 512+, cap at 8,192
-  - [x] Discard chunks under 512 tokens
-  - [x] Preserve metadata: company name, filing date per chunk
-- [x] **L1.9** Print MD&A chunk stats: total chunks, token length percentiles
-- [x] **L1.10** Combine earnings + MD&A chunks into single dataframe
-  - [x] Unified columns: `text`, `source` ("earnings_transcripts" / "sec_10k_mda"), `source_domain`, `company`, `period`, `token_length`
-- [x] **L1.11** Hard filter: drop any rows outside [512, 8192] token range
-- [x] **L1.12** Print combined stats:
-  - [x] Total rows
-  - [x] Per-source counts
-  - [x] Token length percentiles (p25/p50/p75/p90/p95/max)
-  - [x] Number of unique companies
-- [x] **L1.13** Save raw long-context dataset to `data/processed/long_raw_combined.parquet`
-
-### Phase L2: Deduplication ✅
-
-- [x] **L2.1** Exact dedup: normalize text (lowercase, collapse whitespace), drop duplicates
-  - [x] Print count removed
-- [x] **L2.2** Near-duplicate dedup: MinHash (same config as v2: 5-gram, 64 perms, 16 bands, Jaccard > 0.8)
-  - [x] Print count removed
-- [x] **L2.3** Print post-dedup stats: total rows, per-source counts
-- [x] **L2.4** Save to `data/processed/long_deduped.parquet`
-
-### Phase L3: Balancing & Capping ✅
-
-- [x] **L3.1** Check raw source distribution after dedup
-- [x] **L3.2** Cap total at ~43K rows (matching v2 short-context dataset size)
-  - [x] If fewer than 43K rows available, use all (no upsampling)
-  - [x] If more than 43K, downsample each source proportionally
-- [x] **L3.3** Balance between earnings_transcripts and sec_10k_mda sources
-  - [x] Target roughly equal representation (50/50) or proportional to available data
-- [x] **L3.4** Shuffle with fixed seed
-- [x] **L3.5** Print balanced stats: total rows, per-source counts, token length percentiles
-- [x] **L3.6** Save to `data/processed/long_balanced.parquet`
-
-### Phase L4: Entity & Sentiment Annotation (Agent-Labeled) ✅
-
-Since source data is **unlabeled**, the agent determines ALL three columns: `label`, `entity`, `entity_sentiment`.
-
-- [x] **L4.1** Prepare annotation batches: 100 rows per batch (smaller than v2 due to longer texts)
-  - [x] Save to `data/processed/entity_annotations_long/batch_XXXX_input.csv`
-  - [x] Each batch CSV has columns: (index), text
-  - [x] Print total batch count
-- [x] **L4.2** Launch parallel agent workers to annotate batches
-  - [x] For each row, agent reads the full text and determines:
-    - `label`: overall sentiment of the passage (POSITIVE / NEGATIVE / NEUTRAL)
-    - `entity`: primary financial entity the passage is about (canonical company name, ticker, index, commodity, "MARKET", or "NONE")
-    - `entity_sentiment`: sentiment specifically toward the entity (may differ from overall label)
-  - [x] Agent writes `batch_XXXX_output.csv` with columns: (index), label, entity, entity_sentiment
-- [x] **L4.3** Monitor annotation progress: track completed vs total batches
-- [x] **L4.4** Handle rate-limited agents: identify missing batches, re-launch agents for gaps
-- [x] **L4.5** Assemble all batch outputs into main dataframe
-  - [x] Verify row count matches: annotations == balanced dataset
-  - [x] Join on index
-- [x] **L4.6** Validate annotations:
-  - [x] No null values in label, entity, entity_sentiment
-  - [x] All labels in {POSITIVE, NEGATIVE, NEUTRAL}
-  - [x] All entity_sentiment in {POSITIVE, NEGATIVE, NEUTRAL}
-- [x] **L4.7** Text-verify entities: every non-NONE/MARKET entity must appear in its text
-  - [x] Use same substring matching logic as v2 (canonical name, short form, first word)
-  - [x] Reset hallucinated entities to NONE, entity_sentiment = label
-  - [x] Print count of corrections
-- [x] **L4.8** Re-annotate NONE entities with second-pass agents (same as v2)
-  - [x] Prepare NONE-only batches
-  - [x] Agent re-examines and finds missed entities
-  - [x] Text-verify again, fix remaining hallucinations
-- [x] **L4.9** Print final annotation stats:
-  - [x] Label distribution (NEG/NEU/POS)
-  - [x] Entity coverage (non-NONE %)
-  - [x] Unique entities
-  - [x] Top 20 entities
-  - [x] Entity-label agreement rate
-- [x] **L4.10** Save annotated dataset to `data/processed/long_annotated.parquet`
-
-### Phase L5: Train/Val/Test Split & Validation ✅
-
-- [x] **L5.1** Add metadata columns: `label_confidence = "agent"`
-- [x] **L5.2** Select final columns: text, label, source, source_domain, label_confidence, entity, entity_sentiment
-- [x] **L5.3** Stratified split 80/10/10 on `source` (and `label` if enough per-group samples)
-- [x] **L5.4** Save splits:
-  - [x] `data/processed/long_train.parquet`
-  - [x] `data/processed/long_val.parquet`
-  - [x] `data/processed/long_test.parquet`
-- [x] **L5.5** Validate all 3 splits:
-  - [x] No null values
-  - [x] All labels valid
-  - [x] All token lengths in [512, 8192]
-  - [x] No single source > 60%
-  - [x] Report label distribution per split
-  - [x] Zero exact duplicates within each split
-  - [x] Entity coverage
-- [x] **L5.6** Cross-split leakage check: no text in more than one split
-- [x] **L5.7** Print final dataset summary: rows per split, source composition, label distribution, token length stats, entity stats
-
-### Phase L6: Push to HuggingFace ✅
-
-- [x] **L6.1** Create DatasetDict from train/val/test parquets
-- [x] **L6.2** Push to `neoyipeng/modernfinbert-training-v2-long` (public)
-- [x] **L6.3** Write dataset card:
-  - [x] Description: long-context companion to v2
-  - [x] Source datasets with attribution (MIT licenses)
-  - [x] Token length distribution stats
-  - [x] Chunking methodology
-  - [x] Agent annotation methodology (same as v2)
-  - [x] Schema documentation
-  - [x] Intended use: training ModernBERT with long-context financial text
-  - [x] License: MIT (both sources are MIT)
-- [x] **L6.4** Verify dataset loads correctly from HuggingFace
-
----
-
-## Resolved Decisions
-
-1. ~~FOMC dataset~~ -- **Removed**. Hawkish/dovish is monetary policy stance, not financial sentiment. Not compatible.
-2. **Source cap size** -- 15K per source. Confirmed.
-3. **Entity annotation** -- Fully agent-labeled. No packages/scripts needed.
-4. **Aiera as training data** -- Confirmed. Using FPB, FiQA, TFNS as held-out benchmarks instead.
-5. **More earnings call data** -- Added `gtfintechlab/SubjECTive-QA` (2.7K earnings call QA pairs, CC-BY 4.0). Uses OPTIMISTIC dimension as sentiment label.
-6. **Long-context dataset** -- New companion dataset from earnings transcripts + 10-K MD&A. Each row 512-8,192 tokens. Max ~43K rows. Agent-labeled for entity-level sentiment.
+| Risk | Trigger | Mitigation |
+|---|---|---|
+| Focal loss undertrains the head | Train loss flat across all evals | Confirm γ; if stuck, fall through to §3.3 sqrt-weights |
+| Unsloth classifier-reload bug | Crash after `load_best_model_at_end` | Toggle off (§4.8); manual best-checkpoint selection |
+| Kaggle 12h kill mid-S3 | Wall time creeps over budget | save_steps=25 already preserves a usable artifact; resume by loading checkpoint |
+| HF Hub overwrite races multiple devs | Mid-run pushes from elsewhere | Only push after final eval; lock by branch tag `s3-v3-running` |
+| Eval subset too small to be stable | High eval-F1 variance step-to-step | Bump `n_per_class` to 250; the eval cost increase is linear |
+| Rank=32 OOMs at long stage | Step 5.2 OOM | Drop `per_device_train_batch_size` from 8 → 6, raise grad-accum 4 → 6 |

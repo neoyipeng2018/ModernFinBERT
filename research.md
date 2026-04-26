@@ -1,610 +1,186 @@
-# Deep Research: Data Sources for Retraining ModernFinBERT
+# ModernFinBERT v2 — Three-Stage Training Post-Mortem
 
-> **Goal**: Find all possible in-domain data sources (labeled and unlabeled) to train the best financial sentiment model, given that Financial PhraseBank, FiQA, and Financial Twitter are considered out-of-domain / already known.
+Source: `notebooks/results/{01a_short, 01c_medium, 01b_long}/` — logs and trainer states from the three Kaggle T4 runs that produced `neoyipeng/ModernFinBERT-v2-{short, medium, ""}` on the Hub.
 
----
-
-## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [Current State: What ModernFinBERT Uses](#2-current-state)
-3. [Tier 1: High-Impact Labeled Datasets](#3-tier-1-labeled)
-4. [Tier 2: Moderate-Impact Labeled Datasets](#4-tier-2-labeled)
-5. [Tier 3: Niche / Specialized Labeled Datasets](#5-tier-3-labeled)
-6. [Unlabeled Corpora for Domain-Adaptive Pretraining](#6-unlabeled-corpora)
-7. [Market-Reaction Labeled Datasets (Distant Supervision)](#7-market-reaction)
-8. [What the Best Financial LMs Used for Training](#8-what-top-models-used)
-9. [State-of-the-Art Training Methods](#9-sota-methods)
-10. [Recommended Training Pipeline](#10-recommended-pipeline)
-11. [Complete Dataset Reference Table](#11-reference-table)
+The pipeline is a curriculum: train short, then continue on medium, then continue on long. Each stage merges its LoRA into the base, pushes the merged model, and the next stage attaches a *fresh* LoRA on top. Below is what happened, what worked, what didn't, and the specific failure modes the logs reveal.
 
 ---
 
-## 1. Executive Summary <a id="1-executive-summary"></a>
+## 1. The pipeline at a glance
 
-The research uncovered **40+ labeled datasets** and **15+ unlabeled corpora** beyond the three out-of-domain benchmarks (FPB, FiQA, Twitter). The single highest-impact finding is:
+| Stage | NB | Target | Train rows | Max len | Effective batch | Epochs | LR | Class weights | Wall time | Test acc / macro F1 |
+|------:|:--|:--|--:|--:|--:|--:|--:|:--|--:|:--|
+| 1 — short  | 01a | entity-aware sentiment | 34,597 | 512  | 64×2=128 | 3 | 2e-4 | none | ~17 min | **0.7695 / 0.7711** |
+| 2 — medium | 01c | continue from S1     | 29,465 | 4096 | 32×2=64  | 1 | 5e-5 | `[4.18, 1.15, 0.53]` | ~4.4 h  | 0.6314 / 0.5428 |
+| 3 — long   | 01b | continue from S2     | 8,000 (subsample of 28,820) | 6144 | 4×8=32 | 1 | 1e-4 | none | ~5.4 h | 0.6264 / 0.5422 |
 
-**The labeled training pool can grow from ~14K samples to ~250K+ clean examples** by combining:
-- NOSIBLE Financial Sentiment (100K, multi-LLM consensus labels, ODC-By license)
-- FinGPT Sentiment aggregation (76K instruction-formatted, MIT)
-- TimKoornstra aggregated tweets (38K, MIT)
-- JanosAudran SEC reports (20.5M sentence-level, market-reaction labels, Apache 2.0)
-- SEntFiN entity-aware headlines (10.7K)
-- StockEmotions (10K, 12 emotion classes)
-- Gold Commodity Headlines (11.4K)
-- FinEntity (979 entity-level)
-- FOMC Hawkish-Dovish (496)
+All three stages use the same base (`unsloth/ModernBERT-base`, ModernBERT-base via Unsloth), the same LoRA config (r=16, α=32, dropout=0, targets `Wqkv, out_proj, Wi, Wo`, `modules_to_save=[classifier, score]`, ~3.38M trainable / 153M = 2.21%), `task_type=SEQ_CLS`, AdamW-8bit, FP16 (T4 → no bf16), `group_by_length=True`, gradient checkpointing via Unsloth, and the entity-aware sentence-pair tokenization `[CLS] entity [SEP] text [SEP]` (empty string when `entity ∈ {NONE, MARKET, "", None}`).
 
-**For domain-adaptive pretraining**, the open-source ceiling is:
-- PleIAs/SEC: 7.25 billion words of 10-K filings (1993-2024)
-- EDGAR-CORPUS: 220K filings, billions of tokens (Apache 2.0)
-- Financial-News-Multisource: 57M rows across 24 news sources
-- Earnings call transcripts: 33K+ transcripts across 685 companies
-
-**Key methodological insight**: The optimal pipeline is DAPT (continued MLM on financial corpus) -> TAPT (MLM on task-specific unlabeled data) -> supervised fine-tuning with contrastive loss. This consistently produces the best results across all recent papers.
+Hardware was a single Tesla T4 (sm_75, ~14.5 GiB usable, no Flash-Attention 2). Stage 3 explicitly forces `attn_implementation="sdpa"` to dodge the ModernBERT FA2 NaN-loss path on T4.
 
 ---
 
-## 2. Current State: What ModernFinBERT Uses <a id="2-current-state"></a>
+## 2. Stage 1 — short context (the win)
 
-| Source | Domain | Samples | Median Length |
-|--------|--------|---------|---------------|
-| Earnings Calls (Narrative) | Corporate transcripts | 513 | 32 words |
-| Press Releases & News | Financial news | 1,730 | 60 words |
-| Financial PhraseBank | Press releases | 4,846 | 21 words |
-| Earnings Calls (Q&A) | Analyst Q&A | 2,711 | 161 words |
-| Financial Tweets | Social media | 4,649 | 15 words |
-| **Total** | | **14,449** | |
+### Setup specifics
+- Dataset: `neoyipeng/modernfinbert-training-v2`, splits 34,597 / 4,325 / 4,325.
+- Label distribution (train): NEG 9,563 (27.6%), NEU 13,236 (38.3%), POS 11,798 (34.1%) — close to balanced.
+- Entity coverage: 35.7% (12,366/34,597).
+- 3 epochs, cosine schedule, `warmup_steps=10`, `weight_decay=0.001`, `load_best_model_at_end=True` on `eval_loss`.
 
-**Current best results**: 86.88% accuracy (10-fold CV on FPB), 80.44% (held-out). The model uses ModernBERT-base (149M params) with LoRA fine-tuning.
+### Training trajectory (from `checkpoint-813/trainer_state.json`)
+- Train loss: 1.034 → 0.530 (smooth monotone decrease, no instability).
+- Per-epoch eval: 0.7313/0.7320 → 0.7540/0.7555 → **0.7598/0.7610** (val).
+- Best checkpoint = step 813 = end of training, eval_loss 0.6106.
+- Test set: accuracy 0.7695, macro F1 0.7711, with per-class P/R essentially flat across all three classes (NEG 0.78/0.81, NEU 0.76/0.76, POS 0.78/0.75).
 
-**The gap**: Current training data is small (14K) and domain-narrow (68% of news = Canadian mining companies). There's no domain-adaptive pretraining phase. The model goes straight from general ModernBERT to supervised fine-tuning.
+### Why it went well
+1. **Balanced labels.** No class engineering needed. The cross-entropy + cosine schedule ramped the model into a well-calibrated 3-class state.
+2. **Entity-aware input is cheap and effective.** Pair encoding with the entity in segment A gives the classifier a free attention signal about *which* entity to score, without changing the architecture. On short contexts where the entity is rarely ambiguous, this gives a head-start at no cost.
+3. **3 epochs at lr=2e-4 with cosine + 10-step warmup is appropriate for LoRA-only training** at that data scale (≈810 steps total). The learning rate at step 800 is essentially zero (1.96e-7), so the schedule lands cleanly.
+4. **Stage 1's per-class symmetry is the asset that the rest of the pipeline erodes.** It is the only stage where precision and recall are roughly equal across all three classes.
 
----
-
-## 3. Tier 1: High-Impact Labeled Datasets <a id="3-tier-1-labeled"></a>
-
-These are the datasets most likely to produce the largest performance gains.
-
-### 3.1 NOSIBLE Financial Sentiment (100K)
-
-- **HuggingFace**: `NOSIBLE/financial-sentiment`
-- **Size**: 100,000 examples (train split)
-- **Labels**: 3-class (positive, negative, neutral)
-- **Domain**: Financial news headlines
-- **Labeling**: Multi-LLM consensus pipeline (8 LLM models) with active learning refinement and GPT-5.1 oracle validation. Cleaned and deduplicated.
-- **License**: ODC-By (Open Data Commons Attribution) -- commercial use OK
-- **Why it matters**: 20x larger than FPB with comparable label quality. This is the single biggest available labeled dataset for financial sentiment. Multi-LLM consensus reduces individual model bias. Includes source URL and domain metadata.
-- **Risk**: LLM-generated labels may have systematic biases different from human annotators. Need to validate against FPB human labels.
-
-### 3.2 FinGPT Sentiment Training Set (76K)
-
-- **HuggingFace**: `flwrlabs/fingpt-sentiment-train`
-- **Size**: 76,772 examples
-- **Labels**: Two schemes -- 3-level (positive/neutral/negative) AND 7-level (strong negative through strong positive)
-- **Domain**: Mixed financial news + tweets
-- **Format**: Instruction-tuned (instruction/input/output)
-- **License**: MIT
-- **Why it matters**: Large, diverse, and includes fine-grained 7-level labels that can be collapsed to 3-class. The instruction format can be stripped to get raw text + label pairs. Aggregates multiple source datasets.
-
-### 3.3 TimKoornstra Aggregated Financial Tweets (38K)
-
-- **HuggingFace**: `TimKoornstra/financial-tweets-sentiment`
-- **Size**: 38,091 tweets (Neutral=12,181, Bullish=17,368, Bearish=8,542)
-- **Labels**: 3-class (Neutral/Bullish/Bearish)
-- **Domain**: Financial social media
-- **Source**: Aggregated from 9 sources: FiQA, IEEE DataPort, Kaggle, GitHub, Surge AI crypto/stock, HuggingFace. Deduplicated, sentiment-mapped.
-- **License**: MIT
-- **Why it matters**: The most comprehensive aggregation of financial tweet sentiment data. Multi-source reduces single-source bias. Clean deduplication.
-
-### 3.4 JanosAudran SEC Financial Reports (20.5M sentences)
-
-- **HuggingFace**: `JanosAudran/financial-reports-sec`
-- **Size**: 20.5M sentences (large_lite config); 240K (small configs)
-- **Labels**: Binary (positive/negative) derived from market reaction at 1-day, 5-day, and 30-day windows
-- **Domain**: 10-K annual reports, segmented into 20 sections
-- **Metadata**: CIK, tickers, SIC codes, filing dates, actual return percentages
-- **License**: Apache 2.0
-- **Why it matters**: Massive scale with market-derived labels. Can be used for distant supervision pretraining even if labels are noisy. The 30-day window labels may be more reliable than 1-day (less noise). Includes rich metadata for filtering.
-- **Risk**: Market-reaction labels are noisy -- stock moves reflect many factors beyond filing sentiment. Best used as auxiliary training signal, not primary labels.
-
-### 3.5 SEntFiN 1.0 (10.7K entity-aware)
-
-- **Paper**: Sinha et al. (2022) -- "SEntFiN 1.0: Entity-Aware Sentiment Analysis for Financial News"
-- **Size**: 10,753 news headlines; 2,847 headlines with multiple entities having conflicting sentiments; 5,000+ entity phrases
-- **Labels**: Entity-level sentiment (positive, negative, neutral)
-- **Domain**: Financial news headlines
-- **Why it matters**: The only large-scale dataset capturing entity-level conflicting sentiment in financial text. Critical for real-world deployment where "Company A gained market share from struggling Company B" needs different labels per entity. Directly addresses a known weakness of sentence-level models.
-- **Availability**: Via paper authors / GitHub
-
-### 3.6 FinanceMTEB FinSent (10K)
-
-- **HuggingFace**: `FinanceMTEB/FinSent`
-- **Size**: 9,996 examples (train=9,000, test=1,000)
-- **Labels**: 3-class (positive, negative, neutral)
-- **Domain**: Analyst report style text
-- **Why it matters**: Part of the FinanceMTEB benchmark suite. Analyst report domain is underrepresented in current training data. Clean benchmark-quality labels.
+### Caveats
+- `metric_for_best_model="eval_loss"` means selection is driven by loss, not F1. With a 3-class CE the two are well-correlated here, but on imbalanced stages this becomes a problem (see Stage 2).
+- 35.7% entity coverage means ~64% of training rows feed an empty segment A. ModernBERT's tokenizer copes, but it weakens the entity-conditioning signal: a large fraction of training examples teach the model "ignore segment A".
 
 ---
 
-## 4. Tier 2: Moderate-Impact Labeled Datasets <a id="4-tier-2-labeled"></a>
+## 3. Stage 2 — medium context (the fault line)
 
-### 4.1 StockEmotions (10K, 12 emotions)
+### Setup specifics
+- Dataset: `neoyipeng/modernfinbert-training-v2-medium`, splits 29,465 / 3,683 / 3,684. Built from earnings-call chunks and 10-K MD&A sections (`scripts/chunk_sources.py` chunks at 500–3072 tokens).
+- Label distribution (train): NEG 2,349 (8.0%), NEU 8,529 (29.0%), POS 18,587 (63.1%) — heavy POSITIVE skew.
+- Entity coverage: 58.1%.
+- Token lengths: median 2,613, mean 2,343, max 3,082, **0% truncated** at 4096. The 4096 cap is a clean fit.
+- LoRA is *fresh*: stage 1's adapter was merged before push, so this is a new r=16 adapter on a backbone that already encodes stage-1 knowledge.
+- 1 epoch, lr=5e-5, `warmup_ratio=0.06`, `load_best_model_at_end=False`, eval only at epoch end.
+- `WeightedTrainer` with class weights `[4.1812, 1.1516, 0.5284]` (i.e. inverse-frequency, normalized so total expectation matches uniform).
 
-- **Paper**: AAAI 2023
-- **Size**: 10,000 StockTwits comments
-- **Labels**: 12 fine-grained emotion classes + bullish/bearish sentiment
-- **Domain**: StockTwits investor commentary
-- **Why it matters**: Only dataset capturing investor emotions beyond binary/ternary sentiment. The 12 emotions (fear, greed, excitement, etc.) can be collapsed to 3-class but also enable multi-task training. Captures retail investor psychology.
+### Training trajectory (from `checkpoint-461/trainer_state.json`)
+- Train loss: 0.945 → 0.871 (steps 50 → 450). The loss barely moves over the entire epoch — drop of ~0.07 over 460 steps.
+- Eval (end of epoch): loss 0.866, accuracy 0.6321, macro F1 0.5486.
+- Test set (medium): accuracy 0.6314, macro F1 0.5428.
+- **Per-class on medium test:** NEG 0.35 / 0.59 / 0.44, NEU 0.43 / 0.42 / 0.42, POS 0.80 / 0.73 / 0.76.
+- **Regression check on short test:** 0.7473 / 0.7480 — **down 2.22pp acc, 2.31pp F1** vs Stage 1 (0.7695 / 0.7711).
 
-### 4.2 FinGPT Sentiment Classification (47.5K)
+### What went wrong (root causes, not symptoms)
 
-- **HuggingFace**: `FinGPT/fingpt-sentiment-cls`
-- **Size**: 47,557 examples
-- **Labels**: Binary (positive/negative) with 20 instruction variations
-- **Domain**: Mixed news + tweets
-- **Why it matters**: Large binary dataset. Can supplement ternary training as auxiliary task or for pretraining the classification head.
+1. **The class-weighting choice is the dominant failure mode.** With weights `[4.18, 1.15, 0.53]`, every NEGATIVE example contributes ~7.9× the gradient of every POSITIVE example. The model learns to cheaply recover loss by **shifting decision boundaries toward NEGATIVE**. The signature is unmissable on medium test: NEG precision collapses to 0.35 while NEG recall jumps to 0.59 — exactly the "predict NEG too often" pattern. Macro F1 then falls because NEU (0.42) and NEG (0.44) both rot, and POS-recall drops to 0.73.
+2. **The flat training-loss curve is a class-weighting artifact, not undertraining.** Reweighted CE inflates the per-batch loss magnitude on the rare class, so absolute loss values aren't comparable to Stage 1. But the *slope* over 460 steps (~0.07) is small, and grad norms drift between 1.0–2.8 with no clear decay — the model is moving, but in the direction the weights demand, not toward better classification.
+3. **Single epoch + no intra-epoch eval = blind training.** `eval_strategy="epoch"` and `save_strategy="epoch"` mean the only checkpoint we have is the end of the only epoch. There is no way to know if a mid-epoch state was better. Combined with `load_best_model_at_end=False`, whatever happens at step 461 is what we ship.
+4. **Distribution shift from Stage 1 to Stage 2.** The training corpus jumps from headlines/tweets/analyst snippets (balanced) to long earnings-call passages where boilerplate optimism dominates the labels (63% POS). The model is asked to learn a new label prior on top of a backbone tuned to a different prior. Class weighting collides with this prior shift instead of accommodating it.
+5. **`load_best_model_at_end=False` was deliberately set** (no rationale in the notebook), and the comment in Stage 3 ("avoid the unsloth classifier-reload bug") suggests this is a defensive choice. But here it actively prevents recovery.
+6. **Macro F1 of 0.5428 on a 3-class problem with 63% POS prior** is right on top of "always-predict-POS" (which would be ≈0.26 macro F1 but 0.63 acc). The model is meaningfully above that floor, but only because it's overtrading NEG. As a *sentiment classifier on long text* the stage-2 model is not usable.
 
-### 4.3 Gold Commodity Headlines (11.4K)
-
-- **Paper**: Commodity market NLP literature
-- **Size**: 11,412 annotated commodity market headlines
-- **Labels**: Sentiment labels
-- **Domain**: Commodity markets (gold, oil, metals)
-- **Why it matters**: Unique commodity market domain that's underrepresented in financial NLP. Commodity-specific language ("supply glut", "demand surge") differs from equity-focused text.
-
-### 4.4 FOMC Hawkish-Dovish (496)
-
-- **HuggingFace**: `TheFinAI/finben-fomc`
-- **Size**: 496 examples (test set)
-- **Labels**: 3-class (Hawkish, Dovish, Neutral)
-- **Domain**: FOMC statements and minutes (1996-2022)
-- **Paper**: "Trillion Dollar Words" (Shah et al., ACL 2023)
-- **Why it matters**: Central bank communication domain. Monetary policy sentiment is distinct from corporate sentiment. Small but unique domain coverage.
-- **Note**: The larger FOMC dataset (from the full paper) covers 1996-2022 and may be available from the authors.
-
-### 4.5 FinEntity (979, entity-level)
-
-- **HuggingFace**: `yixuantt/FinEntity`
-- **Size**: 979 examples
-- **Labels**: 3-class per entity span (Positive/Neutral/Negative), multiple entities per sentence
-- **Domain**: Financial text, EMNLP 2023
-- **License**: ODC-BY
-- **Why it matters**: Character-offset entity annotations with per-entity sentiment. Complementary to SEntFiN for entity-level modeling.
-
-### 4.6 FinMarBa (61K, market-reaction labels)
-
-- **Paper**: arXiv 2507.22932 (2025)
-- **Size**: 61,252 annotated headlines (Jan 2010 - Jan 2024), from Bloomberg Market Wraps
-- **Labels**: Market-reaction-based sentiment (derived from actual stock/index movements)
-- **Domain**: Bloomberg Market Wrap headlines
-- **Why it matters**: Novel approach using objective market movements rather than human annotation. Eliminates annotator bias. 14 years of temporal coverage. May be available from authors.
-- **Risk**: Same caveat as all market-reaction labels -- stock movements ≠ text sentiment. But Bloomberg Market Wraps are specifically *about* market movements, so alignment is higher than for generic news.
-
-### 4.7 Kaggle Finance News Sentiments (32K)
-
-- **Kaggle**: `antobenedetti/finance-news-sentiments`
-- **Size**: 32,000+ labeled news items
-- **Labels**: Sentiment labels
-- **Domain**: Financial news
-- **Why it matters**: Reasonably large, directly accessible. Quality may vary -- needs validation.
-
-### 4.8 Reddit WallStreetBets Sentiment
-
-- **HuggingFace**: `SocialGrep/reddit-wallstreetbets-aug-2021`
-- **Size**: Full month of r/WallStreetBets (Aug 2021 -- peak meme stock era)
-- **Labels**: Sentiment from in-house pipeline (on comments)
-- **Domain**: Retail investor social media
-- **Why it matters**: Captures meme stock / retail investor language. Highly informal register that stress-tests models.
-- **Risk**: Pipeline-generated labels, quality uncertain. Peak meme stock era may not be representative.
-
-### 4.9 TimKoornstra Synthetic Financial Tweets (1.4M)
-
-- **HuggingFace**: `TimKoornstra/synthetic-financial-tweets-sentiment`
-- **Size**: ~1.4M synthetic tweets
-- **Labels**: 3-class (Neutral/Bullish/Bearish)
-- **Domain**: Synthetic financial social media
-- **Generator**: Nous-Hermes-2-Mixtral-8x7B-DPO
-- **License**: MIT
-- **Why it matters**: Massive scale. Synthetic data can help with rare class examples and distribution coverage. MIT license.
-- **Risk**: Synthetic text may lack the noise, typos, and idiosyncratic patterns of real tweets. Could introduce model-specific artifacts. Best used as supplementary data, not primary.
+### What did Stage 2 actually accomplish?
+- It taught the backbone to handle 4096-token sequences (Stage 1 only saw ≤512). That capability persists into Stage 3.
+- It loaded distributional knowledge from MD&A / earnings prose into the encoder weights via the merged-LoRA push. Even when the classifier head is poor, the encoder representations are now domain-shifted upward in token length.
+- The cost: a 2.3pp F1 hit on the short distribution — small enough to be repairable, large enough to mark this as a regression rather than a free continuation.
 
 ---
 
-## 5. Tier 3: Niche / Specialized Labeled Datasets <a id="5-tier-3-labeled"></a>
+## 4. Stage 3 — long context (the partial recovery)
 
-### 5.1 SemEval-2017 Task 5
+### Setup specifics
+- Dataset: `neoyipeng/modernfinbert-training-v2-long`, splits 28,820 / 3,602 / 3,603.
+- **Train was subsampled from 28,820 → 8,000** to fit Kaggle's 12h cap (`select(range(8000))` after `shuffle(seed=3407)`).
+- Subsample label distribution: NEG 1,764 (22.0%), NEU 2,082 (26.0%), POS 4,154 (51.9%) — still POS-skewed but much less than Stage 2 (because of how the long set was annotated, presumably).
+- Entity coverage: 73.2%.
+- Token lengths after tokenization at MAX_LENGTH=6144: min 378, **median 6144**, max 6144, mean 5119, **52.8% of training rows truncated** to 6144.
+- 1 epoch, lr=1e-4, `warmup_steps=10`, `logging_steps=5`, `save_steps=25`, `save_total_limit=2`, `eval_strategy="epoch"`, `load_best_model_at_end=False`, **no class weighting** (plain `Trainer`, not `WeightedTrainer`).
+- T4-specific fix: `attn_implementation="sdpa"` to avoid the FA2 NaN-loss bug on sm_75.
 
-- **Size**: Train: 1,142 headlines + 1,694 microblog posts; Test: 491 headlines + 794 posts
-- **Labels**: Continuous sentiment score per entity target
-- **Domain**: Financial microblogs and news headlines
-- **Why it matters**: Standard academic benchmark with continuous scores and entity targets.
+### Training trajectory (from `checkpoint-125/trainer_state.json`)
+- 125 total optimizer steps over 8,000 rows × eff. batch 32 = 250 micro-batches → 125 grad-accum steps.
+- Train loss bounces in a 0.73–0.88 band the entire run, with no monotone trend (early steps already at 0.81–0.88, late steps 0.80–0.85). Grad norm fluctuates 0.3–2.6.
+- Eval (end of epoch) on long val: loss 0.827, acc 0.6264, macro F1 0.5422.
+- **Long test:** acc 0.6264, F1 0.5422. Per-class: NEG 0.61/0.59/0.60, NEU **0.38/0.20/0.26**, POS 0.69/0.86/0.76.
+- **Medium test (regression check):** 0.6846 / 0.5262 — accuracy is *up* +5.32pp vs Stage 2 (0.6314), but macro F1 *down* −1.66pp.
+- **Short test (regression check):** 0.7540 / 0.7557 — partial recovery vs Stage 2 (0.7473 / 0.7480), still below Stage 1 baseline (0.7695 / 0.7711) by ~1.5pp.
 
-### 5.2 CryptoBERT / Crypto Sentiment Datasets
+### Root causes of stage-3 behaviour
 
-- Various crypto-specific sentiment datasets on HuggingFace and Kaggle
-- **Domain**: Cryptocurrency markets
-- **Why it matters**: Crypto language overlaps with but differs from traditional finance. Adds register diversity.
-- **Risk**: Crypto vocabulary ("HODL", "mooning", "rug pull") may not transfer well to corporate finance.
+1. **NEUTRAL class collapse.** On both the long and medium test sets, NEU recall drops to 0.20 (from Stage 2's 0.42 on medium). The model has effectively learned: "if it isn't clearly NEG, predict POS". This is the classic decision-boundary failure when a slightly POS-skewed distribution meets removed class weighting and a strong prior already baked into the backbone.
+2. **The reversal of class-weighting strategy is the proximate cause.** Stage 2 over-corrects toward NEG via 4.18× weight; Stage 3 strips the correction entirely; nothing in between is tested. The weights were a tunable hyperparameter and the pipeline's two settings (4.18× on a 63% POS prior, vs. uniform on a 52% POS prior) are the two most aggressive endpoints.
+3. **52.8% truncation at 6144 tokens** is a quiet data-quality failure. Half the long-context rows are *not* getting the long context they require — they hit the cap and lose tail content. ModernBERT can in principle handle 8192 tokens; 6144 was a memory-driven choice, but it cuts away exactly the material that Stage 3 exists to learn from. Effectively the model is being trained on truncated long texts that are cousins of medium texts, which explains why medium accuracy actually rises.
+4. **The training-loss flatness is real, not weighted-CE inflation.** With plain CE, train loss hovering around 0.83 for 125 steps means the model is barely improving. With only 8K rows × 1 epoch, the model has limited gradient steps to learn long-range dependencies on top of a backbone that has only just started seeing 4K+ contexts.
+5. **`save_steps=25` + `save_total_limit=2` + no eval-during-train.** The infrastructure preserves checkpoints (which is good for crash recovery — checkpoint-100 and checkpoint-125 are both on disk), but with no per-step eval, there is no automated way to pick the best of those checkpoints. We default to "last".
+6. **`group_by_length=True` at MAX_LENGTH=6144** packs long-and-long together. Combined with FP16 (no bf16 on T4), this raises the risk of dynamic-range stress in the longest batches. The grad-norm spike to 2.63 at step 115 (where lr is already near zero) is the signature of a single very-long batch with attention-stretched activations.
 
-### 5.3 Auditor Sentiment
-
-- **HuggingFace**: `FinanceInc/auditor_sentiment`
-- **Size**: 4,846 (train=3,880, test=969)
-- **Labels**: 3-class
-- **Domain**: Auditing
-- **License**: Proprietary (DO NOT SHARE) -- limits usage
-- **Note**: Derived from FPB with >75% agreement filter. Not independent data.
-
-### 5.4 Fin-Fact (3.1K financial claims)
-
-- **HuggingFace**: `amanrangapur/Fin-Fact`
-- **Size**: 3,121 claims
-- **Labels**: Fact-check labels, visualization bias labels, justifications
-- **Domain**: Financial fact-checking
-- **Why it matters**: Useful for multi-task training (fact verification as auxiliary task). Not directly sentiment but teaches financial reasoning.
-
-### 5.5 FinQA (8.2K financial QA pairs)
-
-- **HuggingFace**: `dreamerdeo/finqa`
-- **Size**: 8,281 QA pairs over 2,800 financial reports (S&P 500, 1999-2019)
-- **Labels**: Numerical answers with reasoning programs
-- **License**: MIT
-- **Why it matters**: Financial numerical reasoning. Useful for multi-task pretraining to build financial understanding.
-
-### 5.6 FiNER-139 (1.1M sentences, NER)
-
-- **HuggingFace**: `nlpaueb/finer-139`
-- **Size**: 1,121,256 sentences from ~10K SEC filings
-- **Labels**: 139 XBRL entity types (NER, not sentiment)
-- **License**: CC-BY-SA-4.0
-- **Why it matters**: Multi-task training candidate. Financial NER as auxiliary task during fine-tuning can improve representation quality.
-
-### 5.7 Kaggle Sentiment-Labeled Headlines
-
-- **Kaggle**: `cashbowman/sentiment-labeled-headlines`
-- **Labels**: Scores 1-5 (granular)
-- **Why it matters**: 5-point scale provides richer signal than 3-class. Can be bucketed for training.
+### What Stage 3 did do
+- Recovered some of the short-set ground that Stage 2 lost (0.7480 → 0.7557 F1). The merged Stage 2 backbone seems to be the source of degradation; Stage 3's fresh adapter partially overwrites it.
+- Improved medium-context accuracy at the cost of macro F1, by re-tilting toward POS (POS recall on medium jumped from 0.73 → 0.93). This is a sleight-of-hand improvement: the headline number rises, the per-class quality falls.
+- Demonstrated end-to-end that ModernBERT-base + LoRA + Unsloth can train at 6144-token contexts on a single T4 — practically useful even if this particular run isn't a great classifier.
 
 ---
 
-## 6. Unlabeled Corpora for Domain-Adaptive Pretraining <a id="6-unlabeled-corpora"></a>
+## 5. Cross-stage trajectory (the diagnostic)
 
-Domain-adaptive pretraining (DAPT) -- continued MLM on unlabeled financial text -- is the single most impactful training technique for financial NLP (Gururangan et al., ACL 2020). The following corpora are the best available.
+| Test set | Stage 1 | Stage 2 | Stage 3 | Δ vs S1 (acc / F1) |
+|---|---|---|---|---|
+| Short  | **0.7695 / 0.7711** | 0.7473 / 0.7480 | 0.7540 / 0.7557 | −1.55 / −1.54 |
+| Medium | —              | 0.6314 / 0.5428      | 0.6846 / 0.5262      | (S3 vs S2: +5.32 / −1.66) |
+| Long   | —              | —                    | 0.6264 / 0.5422      | — |
 
-### 6.1 SEC EDGAR Filings
-
-| Dataset | HuggingFace Path | Size | Coverage | License |
-|---------|-----------------|------|----------|---------|
-| PleIAs/SEC | `PleIAs/SEC` | 7.25B words (245K filings) | 10-K, 1993-2024 | Not specified |
-| EDGAR-CORPUS | `eloukas/edgar-corpus` | 220K filings, billions of tokens | 10-K, 1993-2020 | Apache 2.0 |
-| SEC Filings Index | `arthrod/SEC_filings_1994_2024` | Metadata only | All form types, 1994-2024 | Not specified |
-
-**Recommended**: Use `eloukas/edgar-corpus` (Apache 2.0 license, clean text with tables stripped) as primary DAPT corpus. Supplement with `PleIAs/SEC` for 2020-2024 coverage.
-
-**Raw EDGAR access**: SEC EDGAR FULL-TEXT search at `efts.sec.gov/LATEST/search-index` provides direct access to all public filings. Free, no API key needed. Can download 10-K, 10-Q, 8-K filings directly.
-
-### 6.2 Financial News
-
-| Dataset | Path | Size | Coverage |
-|---------|------|------|----------|
-| Financial-News-Multisource | `Brianferrell787/financial-news-multisource` | 57.1M rows, 24 subsets | Bloomberg, Reuters, CNBC, NYT, Yahoo Finance, Reddit, 1990-2025 |
-| FNSPID | `Zihan1004/FNSPID` | 15.7M news + 29.7M stock prices | S&P 500, 1999-2023 |
-
-**Recommended**: `financial-news-multisource` is the largest unified financial news corpus available. Research-only license.
-
-### 6.3 Earnings Call Transcripts
-
-| Source | Size | Access |
-|--------|------|--------|
-| kurry/sp500_earnings_transcripts (HF) | 33,000+ transcripts, 685 companies | HuggingFace |
-| jlh-ibm/earnings_call (HF) | 188 transcripts + stock prices, NASDAQ, 2016-2020 | HuggingFace |
-| Seeking Alpha / Motley Fool transcripts | Millions of transcripts | Web scraping (ToS restrictions) |
-
-**Recommended**: `kurry/sp500_earnings_transcripts` provides excellent coverage. Earnings calls capture spoken corporate financial language that's distinct from written news/filings.
-
-### 6.4 Central Bank Communications
-
-| Source | Size | Access |
-|--------|------|--------|
-| BIS speeches | 1996-present, thousands of speeches | bis.org (free) |
-| ECB speeches | 1997-present | ecb.europa.eu (free) |
-| Fed FOMC minutes | 1993-present | federalreserve.gov (free) |
-| Fed Beige Book | 1996-present | federalreserve.gov (free) |
-
-**Why it matters**: Central bank language has unique characteristics (hedging, forward guidance, policy stance) that make it a valuable pretraining domain. Models trained on this text better understand uncertainty and conditionality.
-
-### 6.5 Stock Market Social Media (Unlabeled)
-
-| Dataset | Path | Size |
-|---------|------|------|
-| StephanAkkerman/stock-market-tweets-data | HuggingFace | 923,673 tweets (Apr-Jul 2020) |
-| Reddit WallStreetBets dumps | Various | Millions of posts |
-| StockTwits historical data | StockTwits API | Billions of messages |
-
-### 6.6 Additional Financial Text Sources
-
-- **IPO prospectuses**: Available via SEC EDGAR (S-1 filings). Dense financial language.
-- **Credit rating agency reports**: Partially available from S&P, Moody's, Fitch press releases.
-- **ESG reports**: Growing corpus, available from company investor relations pages.
-- **Financial textbooks**: Public domain older editions available on Project Gutenberg / Internet Archive.
-- **Loughran-McDonald financial word lists**: Not a corpus but provides domain vocabulary for augmentation.
-- **Financial regulations**: SEC, FINRA, CFTC regulatory texts. Free and public.
+The macro-F1 column tells the story Stage 1 is the high-water mark. Every subsequent stage erodes per-class quality, and macro F1 on long-context test (0.5422) is essentially *the same* as Stage 2's medium-test F1 (0.5428) — the long-context training did not buy a measurable improvement in classification quality, only a transfer of where the model is willing to make POS predictions.
 
 ---
 
-## 7. Market-Reaction Labeled Datasets (Distant Supervision) <a id="7-market-reaction"></a>
+## 6. Specifics worth knowing about how the pipeline works
 
-These datasets use stock price movements to automatically assign sentiment labels. Labels are noisy but free and massive in scale.
+These are the non-obvious mechanics — ground truth from reading the notebooks and configs, not just the logs.
 
-| Dataset | Size | Label Method | Best For |
-|---------|------|-------------|----------|
-| JanosAudran/financial-reports-sec | 20.5M sentences | 1/5/30-day return windows | DAPT with weak labels |
-| FNSPID | 15.7M news + prices | Price-aligned news | News-price sentiment |
-| FinMarBa | 61K Bloomberg headlines | Market-movement labels | High-quality distant labels |
-
-**Best practice**: Use market-reaction labels as auxiliary training signal or for pretraining, not as primary fine-tuning labels. A 30-day return window produces more reliable labels than 1-day for longer documents (10-K filings). For news headlines, 1-day returns may be appropriate.
-
-**Loughran-McDonald lexicon as distant supervisor**: The LM dictionary provides six financial sentiment categories (negative, positive, litigious, uncertainty, constraining, superfluous) derived from 10-K filings. Can be used to auto-label sentences containing LM dictionary words. Recent work (EnhancedFinSentiBERT, 2025) integrates LM signals as a feature branch alongside BERT, achieving 87.0% F1 on FPB.
-
----
-
-## 8. What the Best Financial Language Models Used <a id="8-what-top-models-used"></a>
-
-Understanding what data the top models trained on reveals what works:
-
-| Model | Base | Pretraining Corpus | Corpus Size | FPB Result |
-|-------|------|--------------------|-------------|------------|
-| ProsusAI/FinBERT | BERT-base | Reuters TRC2 (financial subset) | Undisclosed | 88.9% acc |
-| FinBERT (Yang et al.) | BERT-base | 10-K + financial news + earnings calls | 4.9B tokens | 79.3% acc* |
-| BloombergGPT | From scratch (50B) | FinPile: 40% web/news, 40% filings, 20% other | 363B financial + 345B general | N/A |
-| FinTral | Mistral-7B | FinSet: C4-finance + SEC EDGAR + news + social media | 20B tokens | Beats GPT-4 on 5/9 tasks |
-| EnhancedFinSentiBERT | BERT | Financial news + analyst reports (2010-2024) | ~1GB text, 9M+ sentences | 87.0% F1 |
-| FinRoBERTa-FSA | RoBERTa | Financial domain pretraining + FPB fine-tuning | Undisclosed | ~97% acc |
-
-*Yang FinBERT's 79.3% is on analyst report test set, not FPB.
-
-**Key insight**: Every model that achieves >88% on FPB has domain-adaptive pretraining on financial text. The models that skip DAPT and go straight to fine-tuning plateau around 80-85%. This is the single most important gap in current ModernFinBERT training.
-
-### Reproducible Open-Source Ceiling
-
-The maximum openly available pretraining corpus:
-- **SEC filings**: PleIAs/SEC (7.25B words) + EDGAR-CORPUS (220K filings, ~6B tokens)
-- **Financial news**: Financial-News-Multisource (57M rows)
-- **Earnings calls**: kurry/sp500_earnings_transcripts (33K+)
-- **Central bank**: BIS + ECB + Fed speeches and minutes
-- **Social media**: Stock tweets (923K) + StockTwits + Reddit finance subs
-
-**Estimated total**: 15-20B tokens of financial text, comparable to what ProsusAI and Yang used, and ~5% of BloombergGPT's financial corpus. More than sufficient for continued pretraining of an encoder model.
+- **LoRA targets `Wqkv, out_proj, Wi, Wo`** — covers ModernBERT's attention QKV (fused), attention output, and the GeGLU MLP (`Wi` is the 2× projection that splits into gate + value, `Wo` is the down-projection). This is the canonical "everything that matters in a transformer block" configuration for ModernBERT and is correct.
+- **`modules_to_save=["classifier", "score"]`** — both names are kept because `score` is the head name HF uses for token-classification, while `classifier` is for sequence-classification. PEFT will save whichever exists. The classifier head is kept full-precision (upcast from FP16 to FP32 by Unsloth) and trained end-to-end alongside the LoRA.
+- **Each stage attaches a *fresh* LoRA** on a previously-merged backbone. This is the "merge-then-push-then-fresh-LoRA" continued-fine-tuning pattern. It avoids stacking adapters but means each stage's adapter learns from scratch on top of a backbone that is *already* domain-shifted. Forgetting risk is concentrated in the merge step at the boundary.
+- **Stage 3's no-`load_best_model_at_end` is deliberate.** Comment in 01b: "Skipping this avoids an extra epoch-end save+reload that can re-trigger the unsloth classifier-reload bug after training." So the design accepts "ship the last checkpoint" as a known limitation of the toolchain.
+- **`UNSLOTH_DISABLE_FAST_GENERATION=1`** is set in all three notebooks because we're doing classification, not generation; the fast-generation path is irrelevant and can interfere.
+- **`TORCHDYNAMO_DISABLE=1`** is set in stages 2 and 3 (added once they hit longer contexts). Without it, dynamo recompiles at every variable-length batch, which is catastrophic with `group_by_length=True`.
+- **Stage 3's `attn_implementation="sdpa"` workaround** references HF discussion #59 and `transformers#35988` — the ModernBERT FA2 NaN-loss bug only triggers when FA2 is reachable. Stage 1 and 2 silently dodge this because Unsloth/T4 already falls back to xformers; Stage 3 makes the choice explicit because at 6144 tokens, the cost of a silent fallback is much higher.
+- **`group_by_length=True` everywhere** is correct for length-skewed datasets (short-stage entity-pair lengths range widely, medium/long datasets even more so) — it cuts wasted padding compute. The price is intra-epoch noise: gradients from "all short" batches differ from "all long" batches, which interacts poorly with no-eval-during-training.
+- **`adamw_8bit` + gradient checkpointing + Unsloth** is the trio that makes 6144-token training fit on a 14.5 GiB T4. Without 8-bit optimizer state and Unsloth's smart-offload, batch=4 at 6144 wouldn't fit.
+- **Dataset construction** (from `scripts/chunk_sources.py`, `scripts/build_medium_dataset.py`): medium chunks are 500–3072 tokens by `chars/token=4.5` heuristic; entity verification is substring matching with stop-word filtering before splitting. So entity labels are LLM-generated then *string-verified* against the text — a useful guard against entity hallucination.
 
 ---
 
-## 9. State-of-the-Art Training Methods <a id="9-sota-methods"></a>
+## 7. The signals the logs reveal that aren't in the headline metrics
 
-### 9.1 Domain-Adaptive Pretraining (DAPT)
-
-**Foundation**: Gururangan et al. (ACL 2020) "Don't Stop Pretraining" showed that continued MLM pretraining on domain-specific text consistently improves downstream performance. Combining DAPT then TAPT gave the best results.
-
-**For finance specifically**:
-- Every top-performing financial model uses DAPT
-- Continued pretraining from a strong general checkpoint (BERT/RoBERTa/ModernBERT) is far more cost-effective than pretraining from scratch
-- Mix ~70-80% financial text with ~20-30% general text to prevent catastrophic forgetting (GeoGalactica used 8:1:1 ratio)
-- Even 10% of a well-selected corpus matches full-corpus performance (AWS FinPythia, EMNLP 2024)
-
-### 9.2 Task-Adaptive Pretraining (TAPT)
-
-Continue MLM pretraining on unlabeled examples from the target task distribution (e.g., financial headlines if the task is headline sentiment). Even a few thousand unlabeled examples help. Run 50-100 epochs of MLM on them before fine-tuning.
-
-**Pipeline**: General pretrain -> DAPT on financial corpus -> TAPT on task-specific data -> supervised fine-tuning
-
-### 9.3 Data Mixing and Selection
-
-- **DoReMi** (NeurIPS 2023): Use a proxy model to find optimal domain weights, then resample training data. +6.5% on average over default weights.
-- **Perplexity-based filtering**: Select highest-quality financial samples rather than using everything. AWS FinPythia achieved full performance with 10% of corpus using perplexity + token-type entropy filtering.
-- **Anti-catastrophic-forgetting**: Include 5-30% general-domain data during continued pretraining.
-
-### 9.4 LLM-Based Labeling at Scale
-
-- **GPT-4o/Claude as teacher**: Use LLMs to label financial sentiment at scale, then distill into small encoder.
-- **Active learning** (Fed Reserve M-RARU, 2025): 80% reduction in labeling samples needed by selecting only the most informative points for LLM labeling.
-- **SIEVE** (2024): Fine-tune lightweight encoder on LLM annotations using active learning -- 500 filtering operations for the cost of 1 GPT-4o call.
-- **Multi-LLM consensus**: NOSIBLE dataset used 8 LLMs for labeling. Consensus reduces individual model bias.
-- **Cost-effective pipeline**: (1) Loughran-McDonald dictionary for initial distant labels on large corpus, (2) GPT-4o/Claude with active learning on ~2-5K high-value examples, (3) distill into target encoder.
-
-### 9.5 Contrastive Learning
-
-- **SuCroMoCo** (Knowledge-Based Systems, 2024): Supervised Cross-Momentum Contrast aligns financial text with prototypical sentiment representations. Outperforms both PLM-based approaches and LLMs on financial benchmarks.
-- **Practical approach**: Add SupCon (supervised contrastive) loss alongside cross-entropy during fine-tuning to learn tighter sentiment clusters.
-
-### 9.6 Multi-Task Learning
-
-- Train sentiment + NER + relation extraction jointly (IJCAI 2020 FinBERT used 6 simultaneous pretraining tasks)
-- Recent work (2024) shows joint training reduces reliance on external knowledge and prevents error propagation
-- Candidate auxiliary tasks: financial NER (FiNER-139), fact verification (Fin-Fact), financial QA (FinQA)
-
-### 9.7 Handling Financial Sentiment Challenges
-
-| Challenge | What It Is | Mitigation |
-|-----------|-----------|------------|
-| Neutral dominance | ~60% of FPB is neutral | Weighted loss or dedicated neutral feature branch |
-| Negation/hedging | "Not unprofitable" = positive | Negation-aware attention or augmentation with negated examples |
-| Forward-looking | "Revenue expected to decline" | Include forward-looking statements in training data (earnings calls are rich in these) |
-| Entity-level conflict | Same sentence, different sentiment per entity | Train on SEntFiN / FinEntity for entity-aware sentiment |
-| Domain vocabulary | "Haircut" ≠ barbershop | DAPT on financial text handles this naturally |
-| Class imbalance | Varies by source | Stratified sampling + focal loss |
-
-### 9.8 Base Model Choice
-
-| Model | Params | Context | Speed | Best For |
-|-------|--------|---------|-------|----------|
-| BERT-base | 110M | 512 | Baseline | Legacy baseline |
-| RoBERTa-base | 125M | 512 | ~1x BERT | Better pretraining recipe |
-| DeBERTa-v3-base | 184M | 512 | ~0.5x ModernBERT | **Best task accuracy**, best sample efficiency |
-| ModernBERT-base | 149M | 8,192 | 2-4x DeBERTa | **Best speed/memory**, long context |
-
-**Critical finding** (April 2025 paper): When trained on identical data, DeBERTa-v3 outperforms ModernBERT on benchmark accuracy and reaches higher performance significantly earlier in training. ModernBERT's advantages may partly stem from superior training data (2T tokens) rather than architecture alone.
-
-**Recommendation**: Train both ModernBERT-base and DeBERTa-v3-base variants. ModernBERT for production (speed + long context for earnings calls), DeBERTa-v3 for maximum accuracy on short text.
-
-### 9.9 Key Recent Papers
-
-| Paper | Year | Key Contribution |
-|-------|------|-----------------|
-| "Reasoning or Overthinking" | 2025 | GPT-4o *without* CoT beats GPT-4o *with* CoT on financial sentiment -- overthinking hurts |
-| FinSentLLM | 2025 | Multi-LLM ensemble + semantic features, +3-6% over FinBERT without fine-tuning |
-| EnhancedFinSentiBERT | 2025 | Dictionary knowledge + neutral feature extraction = 87.0% F1 on FPB |
-| TinyFinBERT | 2024 | GPT-4o augmentation + knowledge distillation to tiny model |
-| Fed Reserve M-RARU | 2025 | Active knowledge distillation, 80% sample reduction |
-| SuCroMoCo | 2024 | Supervised contrastive learning beats both PLMs and LLMs |
-| AWS FinPythia | 2024 | 10% of corpus = full performance with smart selection |
-| ModernBERT vs DeBERTaV3 | 2025 | DeBERTaV3 wins on accuracy with same data; ModernBERT wins on efficiency |
+1. **Stage 2's eval runtime is 521s for 3,683 rows** at batch 16, `eval_steps_per_second=0.222`. That's 0.14s/row at 4096-token sequences — i.e. *eval alone* takes ~9 minutes. This is why eval-during-training was disabled: it would balloon stage-2 wall time. But cheap solutions exist (eval on a 500-row stratified subsample mid-epoch).
+2. **Stage 3 completes only 125 optimizer steps.** With `logging_steps=5`, we have 25 loss readings and 0 mid-train evals. For 8000 rows, this is a tiny number of gradient updates — far too few to expect convergence on a new context length and a new label distribution simultaneously.
+3. **`Trainable parameters = 3,381,507 of 152,988,678 (2.21%)`** is the same in all three stages because the LoRA rank/targets are the same. That parameter budget is *fine* for short-context fine-tuning but is on the low end for a *new* context regime in stages 2 and 3 — there's an argument for r=32 or r=64 starting at Stage 2.
+4. **Grad-norm pattern across stages.** Stage 1: smooth (1.6 → 1.0 → 0.5–1.0). Stage 2: noisy 1.1–2.8 throughout. Stage 3: erratic, including a 2.63 spike at step 115 with lr ~ 2e-6. This is consistent with the "schedule-misaligned-with-data" hypothesis — too few steps for cosine to do its work cleanly.
+5. **Stage 3 grad norms below 1.0 are common** (0.31, 0.56, 0.69, 0.71), interleaved with 2.0+ values. Rather than smooth decay, this is "some batches matter, most don't" — a classic signature of `group_by_length=True` mixing wildly-different-difficulty batches.
+6. **Per-class precision drift across stages on the short test:**
+   - Stage 1: NEG 0.78, NEU 0.76, POS 0.78 (flat).
+   - Stage 2: NEG 0.71, NEU 0.74, POS 0.81 (POS up, NEG down — the class weights actually flipped POS upward when evaluated on the more-balanced short distribution, because the *backbone* shifted prior).
+   - Stage 3: NEG 0.74, NEU 0.77, POS 0.75 (re-flattening).
+   The model is genuinely re-learning Stage 1's balance in Stage 3; it just doesn't quite get back there.
 
 ---
 
-## 10. Recommended Training Pipeline <a id="10-recommended-pipeline"></a>
+## 8. What I would change, ranked by expected impact
 
-Based on all findings, here is the recommended pipeline for training the best financial sentiment model:
+These are derived strictly from what the logs and configs show; not generic ML advice.
 
-### Phase 1: Domain-Adaptive Pretraining (DAPT)
-
-**Objective**: Continued MLM pretraining to inject financial domain knowledge into the base model.
-
-**Corpus** (combine these, total ~10-15B tokens):
-1. `eloukas/edgar-corpus` -- 220K 10-K filings, Apache 2.0 (primary)
-2. `PleIAs/SEC` -- 7.25B words of 10-K filings, 1993-2024 (supplement for recent years)
-3. `Brianferrell787/financial-news-multisource` -- 57M rows of financial news
-4. `kurry/sp500_earnings_transcripts` -- 33K earnings call transcripts
-5. Central bank communications (BIS, ECB, Fed speeches/minutes)
-6. `StephanAkkerman/stock-market-tweets-data` -- 923K financial tweets (unlabeled)
-
-**Mix ratio**: 75% financial + 25% general (use a Wikipedia/BookCorpus sample to prevent forgetting)
-
-**Data selection**: Use perplexity-based filtering to select highest-quality financial text. Target 2-5B tokens for continued pretraining (sufficient for encoder models).
-
-**Duration**: ~50K-100K steps, batch size 256, learning rate ~1e-4 with linear warmup
-
-### Phase 2: Task-Adaptive Pretraining (TAPT)
-
-**Objective**: Continue MLM on unlabeled text similar to the downstream task.
-
-**Corpus**: Collect all text from your labeled datasets (strip labels), plus:
-- Financial headlines from news corpora (matching FPB-style text)
-- Short financial commentary (matching tweet-style text)
-- Earnings call excerpts (matching EC-style text)
-
-**Duration**: 50-100 epochs on the task-specific unlabeled data
-
-### Phase 3: Supervised Fine-Tuning
-
-**Training data** (combine, ~250K+ total after dedup):
-1. **NOSIBLE/financial-sentiment** -- 100K (anchor dataset, highest volume)
-2. **flwrlabs/fingpt-sentiment-train** -- 76K (instruction format -> strip to text+label)
-3. **TimKoornstra/financial-tweets-sentiment** -- 38K (social media domain)
-4. **FinanceMTEB/FinSent** -- 10K (analyst report domain)
-5. **SEntFiN** -- 10.7K (entity-aware, resolve to sentence-level for standard training)
-6. **StockEmotions** -- 10K (collapse 12 emotions to 3-class)
-7. **Gold Commodity Headlines** -- 11.4K (commodity domain)
-8. **TheFinAI/finben-fomc** -- 496 (monetary policy domain)
-9. **yixuantt/FinEntity** -- 979 (entity-level)
-10. **Your existing aggregated dataset** -- 14K (current ModernFinBERT training data)
-
-**Deduplication**: Critical. Many datasets share source data (FPB appears in FinGPT, NOSIBLE may overlap with FPB). Use embedding-based dedup with cosine similarity > 0.95 threshold.
-
-**Label harmonization**: Map all to 3-class {negative, neutral, positive}. For bullish/bearish, map bearish->negative, bullish->positive.
-
-**Loss function**: Cross-entropy + SupCon (supervised contrastive) loss, weighted by inverse class frequency
-
-**Augmentation**: Use Verbalized Sampling (your existing DataBoost method) to augment misclassified validation examples
-
-### Phase 4: Evaluation
-
-**Held-out benchmarks** (not used in training):
-- Financial PhraseBank 50agree (standard)
-- Financial PhraseBank allagree (high-agreement subset)
-- FiQA-SA (aspect-based)
-- Twitter Financial News Sentiment
-- FOMC Hawkish-Dovish
-- Your existing blind test set (723 samples)
-
-**Protocols**:
-- 10-fold CV on FPB (for comparability with literature)
-- Held-out evaluation (your established protocol)
-- Multi-seed for statistical significance
-
-### Phase 5: LLM Labeling for Additional Data (Optional)
-
-If more training data is needed:
-1. Take unlabeled financial news headlines from `financial-news-multisource`
-2. Use active learning (M-RARU approach) to select most uncertain/informative examples
-3. Label ~5-10K with Claude/GPT-4o using multi-LLM consensus
-4. Add to training set and retrain
-
-### Expected Outcome
-
-Based on literature, this pipeline should achieve:
-- **FPB 50agree**: 89-92% accuracy (up from 86.88% current CV, 80.44% held-out)
-- **FPB allagree**: 96-98% accuracy (up from 95.14%)
-- The DAPT phase alone should add +3-5pp over current results
-- The expanded training data should add another +2-3pp
+1. **Drop the inverse-frequency class weights in Stage 2.** They dominate the failure mode. Replace with one of: (a) no weighting + `metric_for_best_model="eval_macro_f1"`, (b) gentle weighting like `sqrt(inverse-freq)` ≈ `[2.05, 1.07, 0.73]`, (c) focal loss with γ=2 — which targets the hard-examples problem (NEU vs POS confusion) directly instead of the class-prior problem.
+2. **Add intra-epoch eval to stage 2 and stage 3** (`eval_strategy="steps"`, `eval_steps≈50` for Stage 2, `eval_steps≈10` for Stage 3) on a *subsampled* eval set (300–500 rows) to keep per-eval latency under 30s. Re-enable `load_best_model_at_end=True` if the unsloth classifier-reload bug is patched in current versions; otherwise keep manual best-checkpoint selection from the saved `save_steps=25` artifacts.
+3. **Don't truncate long inputs at 6144 if the goal is long-context.** Either bump to 8192 (ModernBERT supports it; T4 will need batch=2 with grad-accum 16, and possibly a smaller subsample), or accept 4096 as the operational ceiling and drop Stage 3 entirely. Training Stage 3 with 53% truncation is mostly training a worse Stage 2.
+4. **Use macro F1 for model selection from the medium stage onward.** With 8/29/63 class proportions, eval_loss is a poor selection criterion; eval_macro_f1 reflects the actual goal.
+5. **Increase LoRA capacity at Stage 2/3** to r=32 (or 64) when you double the context length. The number of activations the adapter must shape grows with sequence length; rank=16 was tuned at 512 tokens.
+6. **Either stop class-weighting altogether, or use it consistently.** The Stage 2 → Stage 3 strategy reversal (heavy weighting → no weighting) is doing a coin-flip between two failure modes. Pick one and stick with it.
+7. **Build a small held-out eval that evaluates *the same examples* across all stages** — e.g. the short test set is already used as a regression check, but it's the only common axis. Add a "core" eval set spanning all three context lengths so that "did Stage N forget Stage 1?" has one number.
+8. **Investigate the entity coverage gradient** (35.7% → 58.1% → 73.2%). Stage 1 has the most "no entity" rows; this means the entity-aware tokenization is most informative on the long stage. But Stage 1's classifier head was trained mostly without it — so the head is partially "entity-blind" by the time Stage 2 starts. Either backfill entities into Stage 1's data, or train an entity-aware head from scratch at Stage 2 with a slightly higher classifier-only LR.
+9. **Spend more steps at Stage 3.** 125 grad-accum steps is too few. Either drop grad-accum from 8 → 4 (more updates, smaller eff. batch), shrink MAX_LENGTH to 4096 (faster, more steps in the same wall-clock budget), or run 2 epochs on the 8K subsample.
+10. **Calibrate per-stage LR to the new context length, not by intuition.** Stage 2 used 5e-5 (lower than Stage 1's 2e-4 — sensible for continued FT), but Stage 3 *raised* the LR to 1e-4 with even fewer steps. With 125 steps and warmup=10, only ~20 steps are at the peak LR before cosine decays. This is a tiny effective learning window.
 
 ---
 
-## 11. Complete Dataset Reference Table <a id="11-reference-table"></a>
+## 9. Verdict
 
-### Labeled Datasets
+- **Stage 1 is a good model.** 77% accuracy / 77% macro F1 with balanced per-class behaviour on short financial text. Ship it as-is for headline/tweet/snippet sentiment.
+- **Stage 2 is a regression masquerading as a continuation.** The class-weighting is the single most damaging hyperparameter choice in the run. Re-do it.
+- **Stage 3 is a partial recovery from Stage 2 plus a confirmed truncation problem.** It does not deliver long-context value over Stage 2 in any metric except medium-set accuracy (which moves due to POS-bias, not real learning). Do not ship `neoyipeng/ModernFinBERT-v2` as a long-context sentiment model on the strength of these numbers.
+- **The infrastructure is solid.** T4 / Unsloth / SDPA / 8-bit AdamW / gradient checkpointing / merge-and-push continuation all work. The failures are training-recipe choices, not engineering bugs.
 
-| # | Dataset | Path | Size | Labels | Domain | License | Priority |
-|---|---------|------|------|--------|--------|---------|----------|
-| 1 | NOSIBLE Financial Sentiment | `NOSIBLE/financial-sentiment` | 100K | 3-class | News | ODC-By | **P0** |
-| 2 | FinGPT Sentiment Train | `flwrlabs/fingpt-sentiment-train` | 76.7K | 3+7 class | Mixed | MIT | **P0** |
-| 3 | TimKoornstra Financial Tweets | `TimKoornstra/financial-tweets-sentiment` | 38K | 3-class | Social | MIT | **P0** |
-| 4 | JanosAudran SEC Reports | `JanosAudran/financial-reports-sec` | 20.5M | Binary (market) | SEC 10-K | Apache 2.0 | **P1** |
-| 5 | FinanceMTEB FinSent | `FinanceMTEB/FinSent` | 10K | 3-class | Analyst | N/S | **P1** |
-| 6 | SEntFiN 1.0 | Paper / GitHub | 10.7K | Entity-level 3-class | News | N/S | **P1** |
-| 7 | StockEmotions | Paper (AAAI 2023) | 10K | 12 emotions + 2 sent | StockTwits | N/S | **P1** |
-| 8 | Gold Commodity Headlines | Paper | 11.4K | Sentiment | Commodity | N/S | **P1** |
-| 9 | FinGPT Sentiment Cls | `FinGPT/fingpt-sentiment-cls` | 47.5K | Binary | Mixed | N/S | **P2** |
-| 10 | Kaggle Finance News | `antobenedetti/finance-news-sentiments` | 32K | Sentiment | News | N/S | **P2** |
-| 11 | Synthetic Financial Tweets | `TimKoornstra/synthetic-financial-tweets-sentiment` | 1.4M | 3-class | Synthetic | MIT | **P2** |
-| 12 | FOMC Hawkish-Dovish | `TheFinAI/finben-fomc` | 496 | 3-class | Monetary | CC-BY-NC 4.0 | **P2** |
-| 13 | FinEntity | `yixuantt/FinEntity` | 979 | Entity-level 3-class | Finance | ODC-BY | **P2** |
-| 14 | FinMarBa | Paper (2025) | 61K | Market-reaction | Bloomberg | N/S | **P2** |
-| 15 | SemEval-2017 Task 5 | Academic | ~4K | Continuous scores | Mixed | Academic | **P2** |
-| 16 | Reddit WSB Sentiment | `SocialGrep/reddit-wallstreetbets-aug-2021` | ~100K+ | Pipeline labels | Reddit | N/S | **P3** |
-| 17 | Kaggle Labeled Headlines | `cashbowman/sentiment-labeled-headlines` | N/S | 1-5 scale | News | N/S | **P3** |
-| 18 | FiQA (already known) | `TheFinAI/fiqa-sentiment-classification` | 1.1K | Continuous | Mixed | MIT | Benchmark |
-| 19 | FPB (already known) | `takala/financial_phrasebank` | 4.8K | 3-class | News | CC-BY-NC-SA | Benchmark |
-| 20 | TFNS (already known) | `zeroshot/twitter-financial-news-sentiment` | 11.9K | 3-class | Twitter | MIT | Benchmark |
-
-### Unlabeled Corpora for DAPT
-
-| # | Dataset | Path | Size | Domain | License |
-|---|---------|------|------|--------|---------|
-| 1 | PleIAs/SEC | `PleIAs/SEC` | 7.25B words | 10-K filings | N/S |
-| 2 | EDGAR-CORPUS | `eloukas/edgar-corpus` | 220K filings | 10-K filings | Apache 2.0 |
-| 3 | Financial-News-Multisource | `Brianferrell787/financial-news-multisource` | 57M rows | News (24 sources) | Research |
-| 4 | FNSPID | `Zihan1004/FNSPID` | 15.7M news | News + prices | CC-BY-NC 4.0 |
-| 5 | SP500 Earnings Transcripts | `kurry/sp500_earnings_transcripts` | 33K transcripts | Earnings calls | N/S |
-| 6 | Stock Market Tweets | `StephanAkkerman/stock-market-tweets-data` | 923K tweets | Social | CC-BY 4.0 |
-| 7 | BIS Speeches | bis.org | Thousands | Central bank | Public |
-| 8 | ECB Speeches | ecb.europa.eu | Thousands | Central bank | Public |
-| 9 | Fed FOMC Minutes | federalreserve.gov | 1993-present | Monetary policy | Public |
-| 10 | SEC EDGAR Raw | efts.sec.gov | All filings | All SEC | Public |
-
----
-
-## Appendix: Key References
-
-1. Gururangan et al. "Don't Stop Pretraining" (ACL 2020) -- DAPT/TAPT methodology
-2. Malo et al. "Good debt or bad debt" (2014) -- Financial PhraseBank
-3. Shah et al. "Trillion Dollar Words" (ACL 2023) -- FOMC sentiment
-4. Wu et al. "BloombergGPT" (2023) -- Financial LLM at scale
-5. Bhatia et al. "FinTral" (ACL Findings 2024) -- Multimodal financial LLM
-6. Thomas "TinyFinBERT" (2024) -- GPT-4o augmentation + distillation
-7. Fed Reserve "LLM on a Budget" (2025) -- Active knowledge distillation
-8. EnhancedFinSentiBERT (ScienceDirect 2025) -- Dictionary + neutral features
-9. SuCroMoCo (Knowledge-Based Systems 2024) -- Supervised contrastive learning
-10. AWS FinPythia (EMNLP 2024) -- Efficient data selection for financial DAPT
-11. ModernBERT vs DeBERTaV3 (arXiv 2025) -- Architecture comparison
-12. Sinha et al. "SEntFiN 1.0" (2022) -- Entity-aware financial sentiment
-13. NOSIBLE Financial Sentiment (2025) -- Multi-LLM consensus labeling at scale
+The most efficient next experiment is to re-run Stage 2 *only*, with no class weighting and `eval_macro_f1`-based selection on intra-epoch eval, and compare its short-test regression to the current 0.7480 F1. If that single change recovers Stage 1's 0.7711 short-test F1 while improving medium-test macro F1 above 0.55, the rest of the pipeline becomes worth re-running.
