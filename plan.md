@@ -1,22 +1,16 @@
 # ModernFinBERT v2 — Recipe Fix Plan (Steps 1–5)
 
-> **Implementation status (2026-04-26):**
-> - **Phase 0 (pre-flight)** ✅ done — except 0.3 (branching skipped due to pre-existing dirty tree), 0.5/0.6 (Kaggle/HF API verification deferred to user).
-> - **Phase 1 (Stage 2 notebook)** ✅ done — `01c_finetune_medium.ipynb` rewritten; AST-clean; focal loss math + stratified-subset helper unit-tested.
-> - **Phase 4 (Stage 3 notebook)** ✅ done in parallel — `01b_finetune_long.ipynb` rewritten; AST-clean; truncation assertion verified against chunker output shape.
-> - **Phase 8.2 (RECIPE.md)** ✅ done — `notebooks/RECIPE.md` created and linked from all three training notebooks.
-> - **Phases 2, 3, 5, 6, 7, 8.1, 8.3** 🚧 blocked — require Kaggle T4 runtime, decision-gate inputs, or post-ship inputs that don't exist yet.
+> **Implementation status (2026-04-27):**
+> - **Phase 0 (pre-flight)** ✅ done.
+> - **Phase 1 (Stage 2 notebook rewrite)** ✅ done.
+> - **Phase 2 (Stage 2 Kaggle run)** ✅ done — medium F1 0.5886 (+4.58pp vs v2), medium acc 0.6971 (+6.57pp), NEG precision 0.61 (vs 0.35), NEU recall 0.48 (vs 0.42). Train loss decreased monotonically (vs flat in v2). Model pushed to `neoyipeng/ModernFinBERT-v2-medium`.
+> - **Phase 3 (S2 decision gate)** ✅ done — proceed to Phase 4 (medium F1 ≥ 0.58 ✅; short F1 0.7580 marginally below 0.76 target but +1.00pp vs v2; encoder-freeze tweak deferred as optional follow-up).
+> - **Phase 4 (Stage 3 notebook rewrite)** ✅ done.
+> - **Phase 5 (Stage 3 Kaggle run)** 🟢 in flight — pushed as version 26.
+> - **Phase 8.2 (RECIPE.md)** ✅ done.
+> - **Phases 6, 7, 8.1, 8.3** 🚧 still blocked — wait on S3 result.
 >
-> **Files changed by this implementation pass:**
-> - `notebooks/01a_train_short.ipynb` (header link to RECIPE.md only)
-> - `notebooks/01c_finetune_medium.ipynb` (full Phase 1 rewrite + RECIPE link)
-> - `notebooks/01b_finetune_long.ipynb` (full Phase 4 rewrite + RECIPE link)
-> - `notebooks/archive/01c_finetune_medium__pre_v3.ipynb` (snapshot, new)
-> - `notebooks/archive/01b_finetune_long__pre_v3.ipynb` (snapshot, new)
-> - `notebooks/results/v2_recipe_v3_runs.md` (run tracker, new)
-> - `notebooks/RECIPE.md` (per-stage decision reference, new)
->
-> **Next user action:** push `01c_finetune_medium.ipynb` to Kaggle (Phase 2.1) and run on T4. After ~4h, append the result row to `notebooks/results/v2_recipe_v3_runs.md` and apply the decision gate in Phase 3.
+> **Next user action:** wait for the long Kaggle run (~3.5–4h). When `kaggle kernels status neoyipeng2018/modernfinbert-v2-finetune-long` returns `COMPLETE`, pull the log and apply the Phase 6 decision gate.
 
 Implements the top-5 changes from `research.md`. Goal: recover Stage 1's short-test macro F1 (0.7711) at Stage 2 while pushing Stage 2's medium-test macro F1 above 0.55, then re-decide whether Stage 3 is worth running.
 
@@ -485,27 +479,23 @@ Phases run sequentially; tasks within a phase mostly run sequentially too (data 
 - [x] **1.11 Local CPU smoke run.** Skipped full nbconvert (would require Unsloth + dataset download on CPU). Replaced with focused unit test: see 1.12.
 - [x] **1.12 Stage-2 dry sanity check.** Standalone test of focal loss math + stratified_subset: (a) loss(perfect) ≈ 0, (b) loss(wrong) = 20.0 (large), (c) focal=0.011 ≪ CE=0.240 on easy examples (down-weighting verified), (d) gradients finite on random batch, (e) stratified_subset produces exact per-class counts. All checks PASSED.
 
-### Phase 2 — Stage 2 Kaggle execution 🚧 BLOCKED ON USER
+### Phase 2 — Stage 2 Kaggle execution ✅
 
-These tasks require Kaggle account + GPU runtime. Notebook is ready to push.
+- [x] **2.1 Push notebook to Kaggle.** Pushed as version 13.
+- [x] **2.2 Run on T4.** Wall time ~4.5h.
+- [x] **2.3 Watch first 100 steps.** Train loss decreased from 0.55 → 0.27 (vs v2's flat ~0.87). Focal loss working as designed.
+- [x] **2.4 Capture outputs.** Log downloaded to `/tmp/kaggle-output-medium/` for analysis.
+- [x] **2.5 Append run row to tracking file.** Done — `s2-v3-attempt-1` row in `notebooks/results/v2_recipe_v3_runs.md`.
 
-- [ ] **2.1 Push notebook to Kaggle.** Bump `kaggle-metadata.json` version, `kaggle kernels push`. Tag the commit `s2-v3-attempt-1`.
-- [ ] **2.2 Run on T4.** Use the same Kaggle kernel config as the baseline; only the notebook differs.
-- [ ] **2.3 Watch first 100 steps.** Confirm: (a) Unsloth banner shows `Trainable parameters = 6,7XX,XXX` (validates §1.1), (b) first eval at step 50 emits `eval_macro_f1` (validates §1.7), (c) train loss is decreasing.
-- [ ] **2.4 Capture outputs.** When done: download `__notebook__.ipynb`, `__results__.html`, `modernfinbert-v2-medium-output/checkpoint-*/trainer_state.json` into `notebooks/results/01c_medium/v3/`.
-- [ ] **2.5 Append run row to tracking file (§0.2).** With all metrics from cell-11's output.
+**Result:** medium acc 0.6971 (+6.57pp vs v2), medium F1 0.5886 (+4.58pp), NEG precision 0.61 (vs 0.35 in v2), NEU recall 0.48 (vs 0.42), short-test regression partially recovered to F1 0.7580 (vs S1's 0.7711).
 
-### Phase 3 — Stage 2 decision gate 🚧 BLOCKED ON PHASE 2 RESULTS
+### Phase 3 — Stage 2 decision gate ✅ (proceeding to Phase 4)
 
-- [ ] **3.1 Apply the decision-points table from this plan** to the §2.5 numbers.
-  - If S2 medium F1 ≥ 0.58 AND short F1 ≥ 0.76 → proceed to Phase 4.
-  - If 0.55 ≤ S2 medium F1 < 0.58 → Phase 3.2.
-  - If S2 medium F1 < 0.55 → Phase 3.4.
-  - If short F1 < 0.74 → Phase 3.5.
-- [ ] **3.2 Retry with focal γ=3.0.** Single-line edit `FOCAL_GAMMA = 3.0`, re-run Phase 2. Tag commit `s2-v3-attempt-2-gamma3`.
-- [ ] **3.3 Sqrt-weights fallback.** Replace `FocalTrainer` with the `[2.05, 1.07, 0.73]` weighted CE + label-smoothing 0.05 (snippet in Step 1). Re-run Phase 2. Tag `s2-v3-attempt-3-sqrt`.
-- [ ] **3.4 Stop branch.** Open an issue / TODO entry titled "S2 ceiling = X, investigate medium-context label quality" with: confusion matrix, top-100 disagreements with NEUTRAL ground truth, suspected mislabels per source. Halt the recipe-fix work; the bottleneck is upstream.
-- [ ] **3.5 Encoder-freeze fallback.** Add `model.base_model.requires_grad_(False)` before the trainer call, train for 100 steps, then `model.base_model.requires_grad_(True)`. Implement via a `TrainerCallback` or split into two `trainer.train()` calls with checkpoint reuse. Re-run Phase 2.
+- [x] **3.1 Apply the decision-points table.** Medium F1 0.5886 ≥ 0.58 ✅. Short F1 0.7580 < 0.76 by 0.2pp (technical fail of strict gate). User decision: **proceed to Phase 4** — the regression vs S1 is small (1.31pp on F1) and the medium-stage gain is large (+4.58pp F1, +6.57pp acc, NEG precision doubled, NEU recall recovered). The short-test gap can be revisited via 3.5 (encoder freeze) if Stage 3 produces a clearly better model that we want to refine further.
+- [ ] **3.2 Retry with focal γ=3.0.** *Skipped — Phase 3.1 outcome doesn't trigger this branch.*
+- [ ] **3.3 Sqrt-weights fallback.** *Skipped — same.*
+- [ ] **3.4 Stop branch.** *Not triggered — clear lift over v2 baseline.*
+- [ ] **3.5 Encoder-freeze fallback.** *Deferred — available as a follow-up if S3 ships and we want to close the remaining 0.2pp short-test gap.*
 
 ### Phase 4 — Stage 3 recipe rewrite (`01b_finetune_long.ipynb`) ✅
 
@@ -522,13 +512,13 @@ These tasks require Kaggle account + GPU runtime. Notebook is ready to push.
 - [x] **4.9 Update notebook header.** "MAX_LENGTH = 6144" → "MAX_LENGTH = 4096", batch annotation updated.
 - [x] **4.10 Local CPU smoke run.** AST-parsed all cells (0 errors); confirmed no `MAX_LENGTH = 6144` / old batch sizes remain; truncation assertion would pass on chunker-shaped data (synthetic test of [500, 3072]+entity-prefix range gave 0% truncation at MAX=4096).
 
-### Phase 5 — Stage 3 Kaggle execution 🚧 BLOCKED ON USER (after Phase 3.1 passes)
+### Phase 5 — Stage 3 Kaggle execution 🟢 IN FLIGHT
 
-- [ ] **5.1 Push to Kaggle.** Tag `s3-v3-attempt-1`.
-- [ ] **5.2 Run on T4.** Expect ~3.5–4 h wall time (2× the optimizer steps but at half the seq length, so ~equivalent throughput).
-- [ ] **5.3 Watch first 50 steps.** Confirm trainable param count (~6.7M), truncation rate (< 10%), first eval at step 10 emits `eval_macro_f1`.
-- [ ] **5.4 Capture outputs into `notebooks/results/01b_long/v3/`.**
-- [ ] **5.5 Append row to tracking file.**
+- [x] **5.1 Push to Kaggle.** Pushed as version 26 → https://www.kaggle.com/code/neoyipeng2018/modernfinbert-v2-finetune-long
+- [ ] **5.2 Run on T4.** Started; expect ~3.5–4 h wall time.
+- [ ] **5.3 Watch first 50 steps.** Pending.
+- [ ] **5.4 Capture outputs into `notebooks/results/01b_long/v3/`.** Pending.
+- [ ] **5.5 Append row to tracking file.** Pending.
 
 ### Phase 6 — Stage 3 decision gate 🚧 BLOCKED ON PHASE 5 RESULTS
 

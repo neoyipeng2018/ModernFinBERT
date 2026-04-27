@@ -24,13 +24,15 @@ Compact reference for the design choices in `01a_train_short`, `01c_finetune_med
 
 Full-validation eval at MAX_LENGTH≥4096 takes ~10 minutes per pass on T4; intra-epoch eval requires a subset.
 
-| Stage  | Total optimizer steps | `eval_steps` | Eval subset (`stratified_subset` n_per_class) | Subset rows | Per-eval cost |
-|--------|----------------------:|-------------:|------------------------------------------------:|------------:|--------------:|
-| short  | 813                   | (per epoch — fast)  | full val                                | 4,325       | ~16 s         |
-| medium | 461                   | 50           | 167                                             | ~500        | ~70 s         |
-| long   | 250                   | 10           | 100                                             | ~300        | ~50 s         |
+| Stage  | Total optimizer steps | `eval_steps` | `save_steps` | Eval subset (`stratified_subset` n_per_class) | Subset rows | Per-eval cost |
+|--------|----------------------:|-------------:|-------------:|------------------------------------------------:|------------:|--------------:|
+| short  | 813                   | (per epoch — fast)  | per epoch | full val                                | 4,325       | ~16 s         |
+| medium | 461                   | 50           | 50           | 167                                             | ~500        | ~70 s         |
+| long   | 250                   | 25           | 25           | 100                                             | ~300        | ~50 s         |
 
 Then re-eval on full validation once at end of training (`trainer.eval_dataset = tokenized_*["validation"]; trainer.evaluate()`).
+
+**Hard constraint when `load_best_model_at_end=True`:** `save_steps` must be a round multiple of `eval_steps` (HF Trainer raises `ValueError` at construction time otherwise). The simplest pattern is `eval_steps == save_steps`, which is what all stages use. Don't set them independently.
 
 ## LoRA capacity
 
