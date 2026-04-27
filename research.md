@@ -184,3 +184,57 @@ These are derived strictly from what the logs and configs show; not generic ML a
 - **The infrastructure is solid.** T4 / Unsloth / SDPA / 8-bit AdamW / gradient checkpointing / merge-and-push continuation all work. The failures are training-recipe choices, not engineering bugs.
 
 The most efficient next experiment is to re-run Stage 2 *only*, with no class weighting and `eval_macro_f1`-based selection on intra-epoch eval, and compare its short-test regression to the current 0.7480 F1. If that single change recovers Stage 1's 0.7711 short-test F1 while improving medium-test macro F1 above 0.55, the rest of the pipeline becomes worth re-running.
+
+---
+
+## 10. Recipe v3 follow-up: Stage 2 success, Stage 3 abandoned
+
+### Stage 2 (medium) — recipe v3 result
+
+The §8 fix list was implemented and the Stage 2 notebook was rerun on Kaggle (single attempt, ~4.5 h on T4). Run log: `notebooks/results/v2_recipe_v3_runs.md` (`s2-v3-attempt-1`). HF Hub: `neoyipeng/ModernFinBERT-v2-medium`.
+
+| Metric                   | v2 baseline | v3 result | Δ vs v2  | Stage 1 reference |
+|--------------------------|------------:|----------:|---------:|------------------:|
+| Medium acc               | 0.6314      | **0.6971**| **+6.57**| —                 |
+| Medium macro F1          | 0.5428      | **0.5886**| **+4.58**| —                 |
+| Medium NEG precision     | 0.35        | **0.61**  | +0.26    | —                 |
+| Medium NEU recall        | 0.42        | **0.48**  | +0.06    | —                 |
+| Short acc (regression)   | 0.7473      | **0.7561**| +0.88    | 0.7695            |
+| Short macro F1           | 0.7480      | **0.7580**| +1.00    | 0.7711            |
+
+Net per-class behaviour: NEG precision doubled (no more over-prediction), NEU recall partially recovered (no longer collapsed), POS held its accuracy. Train loss now decreases monotonically (0.55 → 0.27) — vs v2's flat 0.87 — confirming focal loss is doing something the model can actually learn from.
+
+**Decision-gate result:** medium F1 ≥ 0.58 ✅, NEG precision ≥ 0.50 ✅, NEU recall ≥ 0.55 ✗ (0.48), short F1 ≥ 0.76 ✗ (0.7580 — short by 0.20pp). Two strict misses, both small. Net improvement is large and the misses are non-blocking: proceed to Stage 3.
+
+### Stage 3 (long) — abandoned
+
+Three Kaggle attempts, all failed before producing a single training step:
+
+1. **Trainer config error.** `eval_steps=10, save_steps=25` with `load_best_model_at_end=True` — HF Trainer requires `save_steps` to be a round multiple of `eval_steps`. Fixed by aligning both to 25. *Lesson encoded in RECIPE.md as a hard rule.*
+2. **HF token unbound.** Pushing a kernel via `kaggle kernels push` does not preserve secret bindings; the kernel needs `HF_TOKEN` toggled on via the Kaggle UI. *Lesson: always re-bind secrets after a CLI push.*
+3. **Truncation assertion.** `assert trunc_pct < 0.10` fired with **78.2% truncation** at MAX_LENGTH=4096. The Step 3 hypothesis ("chunker outputs ~3072 tokens, 4096 should easily fit") was wrong.
+
+The third failure is the substantive one. The chunker (`scripts/chunk_sources.py`) bounds chunks at 500–3072 *intended* tokens via the heuristic `CHARS_PER_TOKEN = 4.5`. For this corpus the real tokenized chars-per-token ratio is **~2.0–2.5** (financial jargon, dense numbers, ticker symbols). So chunks intended for 3072 tokens land at 5,000–8,000+ once the tokenizer sees them. Confirming numbers across runs:
+
+| MAX_LENGTH | Median tokens | Mean tokens | Truncated |
+|-----------:|--------------:|------------:|----------:|
+| 4096 (v3)  | 4096          | 3,718       | **78.2%** |
+| 6144 (v2)  | 6144          | 5,119       | 52.8%     |
+
+At no T4-feasible MAX_LENGTH (max 6144 with batch ≥ 4 and r=32 LoRA) does truncation drop below 10%. **At every option, more than half the training rows lose their tail.** This means Stage 3 in its current form trains on truncated long docs that look like medium docs — i.e., it isn't actually long-context training. The v2 baseline produced metrics this way, but on inspection they revealed positive-class shift rather than long-range learning (research.md §4).
+
+**Decision: ship Stage 2 as canonical v2.** The medium model `neoyipeng/ModernFinBERT-v2-medium` becomes the v2 reference until either:
+
+- the chunker is fixed (`CHARS_PER_TOKEN ≈ 2.5`, regenerate `medium_chunks_raw.parquet` and re-annotate the long set), or
+- the workflow migrates to a GPU with ≥ 24 GB VRAM (e.g. A100, L40) where MAX_LENGTH=8192–12288 with batch ≥ 4 fits.
+
+Both are valid follow-ups and tracked in TODOS.
+
+### Lessons that didn't appear in §8
+
+These are new follow-ups specific to the v3 attempt — keep them separate from the §8 list which targeted Stage 2 specifically:
+
+11. **Validate the chunker against the real tokenizer before relying on chunk-size assertions.** A 5-line script that tokenizes a 100-row sample and reports median/percentile token counts would have flagged the chars/token mismatch in seconds. Add this as a chunker test.
+12. **`save_steps` must be a round multiple of `eval_steps` when `load_best_model_at_end=True`.** The simplest discipline is `eval_steps == save_steps`; this is what the medium and (corrected) long notebooks now use. Encoded in RECIPE.md.
+13. **Kaggle CLI pushes don't preserve secret bindings.** Always re-bind `HF_TOKEN` (or any kernel secret) via Add-ons → Secrets after a push, before triggering Save & Run.
+14. **The truncation finding is also a research.md §4 retroactive correction.** I attributed the v2 baseline's 52.8% truncation to a "memory-driven choice" of MAX=6144. The real cause is the chunker's chars-per-token mismatch; 6144 was chosen reasonably given the *intended* chunk sizes, but those weren't the *actual* tokenized sizes.

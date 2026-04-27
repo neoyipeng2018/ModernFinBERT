@@ -1,16 +1,22 @@
 # ModernFinBERT v2 — Recipe Fix Plan (Steps 1–5)
 
 > **Implementation status (2026-04-27):**
-> - **Phase 0 (pre-flight)** ✅ done.
-> - **Phase 1 (Stage 2 notebook rewrite)** ✅ done.
-> - **Phase 2 (Stage 2 Kaggle run)** ✅ done — medium F1 0.5886 (+4.58pp vs v2), medium acc 0.6971 (+6.57pp), NEG precision 0.61 (vs 0.35), NEU recall 0.48 (vs 0.42). Train loss decreased monotonically (vs flat in v2). Model pushed to `neoyipeng/ModernFinBERT-v2-medium`.
-> - **Phase 3 (S2 decision gate)** ✅ done — proceed to Phase 4 (medium F1 ≥ 0.58 ✅; short F1 0.7580 marginally below 0.76 target but +1.00pp vs v2; encoder-freeze tweak deferred as optional follow-up).
-> - **Phase 4 (Stage 3 notebook rewrite)** ✅ done.
-> - **Phase 5 (Stage 3 Kaggle run)** 🟢 in flight — pushed as version 26.
-> - **Phase 8.2 (RECIPE.md)** ✅ done.
-> - **Phases 6, 7, 8.1, 8.3** 🚧 still blocked — wait on S3 result.
+> - **Phase 0–3 (Stage 2)** ✅ done — `neoyipeng/ModernFinBERT-v2-medium` shipped.
+> - **Phase 4 (Stage 3 notebook rewrite)** ✅ done — but the recipe doesn't apply on this dataset/hardware (see below).
+> - **Phase 5 (Stage 3 Kaggle run)** ⛔ **abandoned** after three attempts:
+>   - Attempt 1: `load_best_model_at_end` config error (eval_steps=10, save_steps=25 not aligned). Fixed.
+>   - Attempt 2: HF_TOKEN secret unbound from kernel after CLI push. Re-bound via UI.
+>   - Attempt 3: Hit `assert trunc_pct < 0.10` — actual truncation **78.2%** at MAX=4096. The chunker's `CHARS_PER_TOKEN=4.5` heuristic is wrong for this data (real ratio ≈ 2.0–2.5), so chunks intended for 500–3072 tokens land at 5,000–8,000+ once tokenized. The v2 baseline hit 52.8% at MAX=6144 for the same reason. **No T4-feasible MAX_LENGTH gets truncation < 10%.**
+> - **Phase 6 (S3 decision gate)** ✅ resolved — abandon S3, ship S2 as canonical v2.
+> - **Phase 7 (ship)** 🟡 partial — docs updated; HF Hub copy from `-v2-medium` → `-v2` requires user to run `hf auth login` locally and re-attempt, or use the Hub UI's "duplicate this repo" feature. Canonical v2 reference is `neoyipeng/ModernFinBERT-v2-medium` until that copy happens.
+> - **Phase 8.2 (RECIPE.md)** ✅ done; updated with the truncation finding.
 >
-> **Next user action:** wait for the long Kaggle run (~3.5–4h). When `kaggle kernels status neoyipeng2018/modernfinbert-v2-finetune-long` returns `COMPLETE`, pull the log and apply the Phase 6 decision gate.
+> **Final v2 model:** `neoyipeng/ModernFinBERT-v2-medium` — medium-context test acc 0.6971 / macro F1 0.5886, short-context regression 0.7561 / 0.7580 (vs Stage 1 baseline 0.7695 / 0.7711).
+>
+> **Follow-ups left for later:**
+> - Re-chunk the long-context dataset with `CHARS_PER_TOKEN ≈ 2.5` so that real tokenized lengths fit < 4K.
+> - Encoder-freeze fallback (Phase 3.5) if we want to close the residual short-test gap.
+> - Migrate the long-context run to a 24+ GB GPU.
 
 Implements the top-5 changes from `research.md`. Goal: recover Stage 1's short-test macro F1 (0.7711) at Stage 2 while pushing Stage 2's medium-test macro F1 above 0.55, then re-decide whether Stage 3 is worth running.
 
@@ -512,42 +518,38 @@ Phases run sequentially; tasks within a phase mostly run sequentially too (data 
 - [x] **4.9 Update notebook header.** "MAX_LENGTH = 6144" → "MAX_LENGTH = 4096", batch annotation updated.
 - [x] **4.10 Local CPU smoke run.** AST-parsed all cells (0 errors); confirmed no `MAX_LENGTH = 6144` / old batch sizes remain; truncation assertion would pass on chunker-shaped data (synthetic test of [500, 3072]+entity-prefix range gave 0% truncation at MAX=4096).
 
-### Phase 5 — Stage 3 Kaggle execution 🟢 IN FLIGHT
+### Phase 5 — Stage 3 Kaggle execution ⛔ ABANDONED
 
-- [x] **5.1 Push to Kaggle.** Pushed as version 26 → https://www.kaggle.com/code/neoyipeng2018/modernfinbert-v2-finetune-long
-- [ ] **5.2 Run on T4.** Started; expect ~3.5–4 h wall time.
-- [ ] **5.3 Watch first 50 steps.** Pending.
-- [ ] **5.4 Capture outputs into `notebooks/results/01b_long/v3/`.** Pending.
-- [ ] **5.5 Append row to tracking file.** Pending.
+Three attempts; all failed. Root cause: dataset truncation at any T4-feasible MAX_LENGTH is too high (78% at 4096, 53% at 6144) because `scripts/chunk_sources.py` uses `CHARS_PER_TOKEN=4.5` but real tokenized lengths run at chars/token ≈ 2.0–2.5 for this corpus.
 
-### Phase 6 — Stage 3 decision gate 🚧 BLOCKED ON PHASE 5 RESULTS
+- [x] **5.1 Push to Kaggle.** Pushed (versions 26, 28, then user re-trigger after secret rebind).
+- [x] **5.2 Run on T4.** Three attempts, all crashed before training started.
+- [x] **5.3 Watch first 50 steps.** Never reached training; failed at config / login / truncation assertion respectively.
+- [x] **5.4 Capture outputs.** Logs captured for all three failed attempts.
+- [x] **5.5 Append row to tracking file.** Three failure rows logged in `v2_recipe_v3_runs.md`.
 
-- [ ] **6.1 Compare to plan targets.** Long F1 ≥ 0.58, medium F1 not regressed below S2's new baseline, short F1 ≥ 0.74.
-- [ ] **6.2 If pass → Phase 7.** If fail → record the failure mode in the tracking file; Phase 7 still runs but ships the *Stage 2* model as the canonical `v2` rather than the Stage 3 model. Update plan: "S3 ablation showed no lift over S2; ship S2 as final".
+### Phase 6 — Stage 3 decision gate ✅ resolved → ABANDON
 
-### Phase 7 — Documentation and ship 🚧 BLOCKED ON PHASE 6 RESULTS
+- [x] **6.1 Compare to plan targets.** No comparable numbers — runs never produced metrics. The truncation finding alone makes Stage 3 indefensible on this hardware/data combination.
+- [x] **6.2 Decision: skip Stage 3, ship Stage 2 as canonical v2.** Recorded in research.md §10. Ship target: `neoyipeng/ModernFinBERT-v2-medium` (already on Hub from Phase 2). Optionally rename to `-v2` later.
 
-Cannot run pre-emptively: README/MODEL_CARD/research.md updates require the actual numbers from Phase 5/6. The HF push runs from inside the Kaggle notebook (cell-13), not from this machine.
+### Phase 7 — Documentation and ship 🟡 PARTIAL
 
-- [ ] **7.1 Update `MODEL_CARD.md`.** New per-class precision/recall, new training recipe section noting focal loss, rank=32, eval-during-training, MAX_LENGTH=4096.
-- [ ] **7.2 Update `README.md`.** Replace the "Key Results" row for v2 with new numbers; do not touch the v1 rows.
-- [ ] **7.3 Update `research.md`.** Add a §10 "Recipe v3 follow-up" section linking to the new tracking file and summarizing the deltas vs the v2 baseline.
-- [ ] **7.4 Push merged model to HF Hub.** `merged.push_to_hub("neoyipeng/ModernFinBERT-v2", private=False)` (already in cell-13). Confirm tokenizer pushes too.
-- [ ] **7.5 Add commit message body referencing run IDs from tracking file.** One commit per stage, both on the same branch.
-- [ ] **7.6 Open PR `recipe-fix-v3 → main`.** PR description template:
-   - **Summary:** S2 + S3 recipe fix (focal loss, intra-epoch eval, F1 selection, rank=32, 4K context cap).
-   - **Numbers:** before/after table.
-   - **Files:** notebooks + 3 docs.
-   - **Risks:** HF model overwritten — old commit hash recorded in tracking file.
-- [ ] **7.7 After merge, archive `recipe-fix-v3` branch.** Tag `v2-recipe-v3` on the merge commit.
+Local HF token was invalid (`Invalid user token` from `whoami`), so the HF Hub copy from `-v2-medium` → `-v2` is left to the user. Everything else done.
 
-### Phase 8 — Cleanup and lessons 🚧 BLOCKED ON PHASE 7
+- [ ] **7.1 Update `MODEL_CARD.md`.** *Skipped — `MODEL_CARD.md` documents the v1 base model and is paper-aligned. v2 is a separate experimental track; conflating would be wrong. Future work: write `MODEL_CARD_V2.md` if v2 becomes a published artifact.*
+- [x] **7.2 Update `README.md`.** Added a "v2 Entity-Aware Update (experimental)" section pointing at `-v2-medium` with the new metrics; v1 rows untouched.
+- [x] **7.3 Update `research.md`.** Appended §10 "Recipe v3 follow-up: truncation finding and Stage 3 abandonment".
+- [ ] **7.4 Push merged model to HF Hub.** *User action required — run `hf auth login` locally then either re-run this step, or use the Hub UI's duplicate-repo feature to copy `-v2-medium` to `-v2`.*
+- [x] **7.5 Add commit message body referencing run IDs from tracking file.**
+- [ ] **7.6 Open PR.** *Skipped — committing directly to main per user's earlier instruction.*
+- [ ] **7.7 Tag `v2-recipe-v3`.** *Optional follow-up.*
 
-8.2 (RECIPE.md) is the only Phase 8 task that can run pre-emptively. Doing it now while context is hot.
+### Phase 8 — Cleanup and lessons 🟡 PARTIAL
 
-- [ ] **8.1 Delete `notebooks/archive/01*__pre_v3.ipynb`** *only after* the new HF model is confirmed live and reproducible from the merged notebooks.
-- [x] **8.2 Add a `notebooks/RECIPE.md` (new file).** Created — covers focal vs CE, `load_best_model_at_end` guidance, eval-subset sizing per stage. Referenced from `notebooks/RECIPE.md`.
-- [ ] **8.3 Close out research.md TODOs.** If §8 items 6–10 (entity backfill, per-stage LR, etc.) were *not* triggered, mark them resolved or move to `TODOS.md` with current priority.
+- [ ] **8.1 Delete `notebooks/archive/01*__pre_v3.ipynb`** *deferred — keep until v2 is properly published; archives are reference if anyone needs to revert.*
+- [x] **8.2 Add a `notebooks/RECIPE.md` (new file).** Done; updated with the truncation reality and the eval/save_steps alignment constraint.
+- [x] **8.3 Close out research.md TODOs.** §10 added with the new follow-ups (re-chunk dataset, encoder-freeze, larger GPU).
 
 ### Risk register (review before Phase 2 and Phase 5)
 

@@ -70,3 +70,16 @@ ModernFinBERT/
 - [HuggingFace Model](https://huggingface.co/neoyipeng/ModernFinBERT-base)
 - [Training Dataset](https://huggingface.co/datasets/neoyipeng/financial_reasoning_aggregated)
 - [FinancialPhraseBank](https://huggingface.co/datasets/financial_phrasebank)
+
+## v2 entity-aware update (experimental)
+
+A successor model trained on entity-targeted financial sentiment data (analyst notes, earnings prose, headlines, tweets) is available as **[`neoyipeng/ModernFinBERT-v2-medium`](https://huggingface.co/neoyipeng/ModernFinBERT-v2-medium)**. It is *not* the paper model — it ships separately as an experimental track.
+
+| Test set                                | Accuracy | Macro F1 |
+|-----------------------------------------|---------:|---------:|
+| Short (FPB-like, headlines/tweets)      | 0.7561   | 0.7580   |
+| Medium (earnings prose, MD&A)           | 0.6971   | 0.5886   |
+
+Recipe: ModernBERT-base + LoRA (r=32, α=64, 6.7M trainable), entity-aware sentence-pair tokenization `[CLS] entity [SEP] text [SEP]`, focal loss (γ=2.0) at the medium stage, F1-based best-checkpoint selection. Full post-mortem in `research.md`; per-stage decisions in `notebooks/RECIPE.md`; run history in `notebooks/results/v2_recipe_v3_runs.md`.
+
+Long-context Stage 3 was attempted and abandoned — the data chunker's `CHARS_PER_TOKEN=4.5` heuristic mismatches the real tokenized lengths (≈ 2.0–2.5 for financial text), so truncation cannot be brought below 10% on T4. Re-chunking is a tracked follow-up.

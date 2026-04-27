@@ -46,13 +46,22 @@ Keep α/r = 2 across stages. Don't bump short — it works.
 
 ## Context length
 
-| Stage  | MAX_LENGTH | Notes                                                                                |
-|--------|-----------:|--------------------------------------------------------------------------------------|
-| short  | 512        | Median ~44 tokens; never the bottleneck.                                             |
-| medium | 4096       | 0% truncation against 500–3072-token chunks (median 2613).                           |
-| long   | **4096**   | Bumped down from 6144 — at 6144 the prior recipe truncated 52.8% of training rows.   |
+| Stage  | MAX_LENGTH | Truncation rate | Notes                                                                                |
+|--------|-----------:|----------------:|--------------------------------------------------------------------------------------|
+| short  | 512        | 0%              | Median ~44 tokens; never the bottleneck.                                             |
+| medium | 4096       | 0%              | Median 2613 tokens. Comfortably fits the medium-context corpus.                      |
+| long   | (n/a)      | —               | **Abandoned.** See note below.                                                       |
 
-Hard assertion in `cell-8`: `assert trunc_pct < 0.10`. If this fires, fix the chunker before raising MAX_LENGTH.
+Hard assertion in long stage's `cell-8`: `assert trunc_pct < 0.10`. If this fires, the chunker output is too long for any T4-feasible MAX_LENGTH — fix the chunker, don't raise the cap.
+
+### The chunker mis-estimates token length
+
+`scripts/chunk_sources.py` uses `CHARS_PER_TOKEN = 4.5` to bound chunk size at 500–3072 *intended* tokens. For this corpus (financial jargon, ticker symbols, dense numbers) the real chars/token ratio is **~2.0–2.5**, so chunks land at 5,000–8,000+ tokens once the tokenizer sees them. Concrete numbers from prior runs:
+
+- v2 baseline at MAX_LENGTH=6144: median=6144, 52.8% truncated.
+- v3 attempt at MAX_LENGTH=4096: median=4096, **78.2% truncated**.
+
+No T4-feasible MAX_LENGTH (≤ 6144 with batch ≥ 4 + r=32 LoRA) gets truncation < 10%. To make long-context training viable, **re-chunk with `CHARS_PER_TOKEN ≈ 2.5`** so intended chunk sizes match real tokenized lengths. Until then, ship the medium model as canonical v2.
 
 ## Batch and grad-accum
 
@@ -77,4 +86,4 @@ Each stage merges its LoRA into the backbone (`model.merge_and_unload()`) and pu
 
 ## When to stop and ship Stage 2 only
 
-If after Phase 6 (long-stage rerun), the long-test macro F1 fails to exceed Stage 2's medium F1 by ≥ 0.02, do not push the long-stage model. The long stage has not earned its slot in the pipeline. Push the Stage 2 model as canonical `neoyipeng/ModernFinBERT-v2` and document the long-stage ablation in `research.md`.
+This is what happened in recipe v3: Stage 3 was abandoned for the truncation reason above. **Canonical v2 = `neoyipeng/ModernFinBERT-v2-medium`**. Three failure modes are documented in `notebooks/results/v2_recipe_v3_runs.md`. Stage 3 can be revisited once the chunker is fixed, on the same hardware. Until then, treat the long notebook as a placeholder.
